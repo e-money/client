@@ -15,7 +15,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/cosmos/go-bip39"
-
+	"github.com/e-money/em-ledger/types"
 	"github.com/tendermint/go-amino"
 	"github.com/tendermint/tendermint/crypto"
 	"github.com/tendermint/tendermint/crypto/secp256k1"
@@ -25,6 +25,8 @@ const (
 	defaultBIP39Passphrase = ""
 	PartialBIP44Prefix     = "44"
 	PartialPath            = "0'/0/0"
+	// TODO check id how it applies to e-money
+	Bip44CoinType = 459
 )
 
 // KeyManager is an interface for common methods on KeyManagers
@@ -34,10 +36,14 @@ type KeyManager interface {
 	Sign(authtypes.StdSignMsg, *amino.Codec) ([]byte, error)
 }
 
+func init() {
+	types.ConfigureSDK()
+}
+
 // NewMnemonicKeyManager creates a new KeyManager from a mnenomic
 func NewMnemonicKeyManager(mnemonic string, coinID uint32) (KeyManager, error) {
-	fullBIP44Prefix := fmt.Sprintf("%s'/%d'/", PartialBIP44Prefix, coinID)
-	fullPath := fullBIP44Prefix + PartialPath
+	// TODO: Implement correct path
+	fullPath := PartialBIP44Prefix + "/" + PartialPath
 
 	k := keyManager{}
 	err := k.recoveryFromMnemonic(mnemonic, fullPath)

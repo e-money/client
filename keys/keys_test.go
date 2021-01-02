@@ -8,7 +8,7 @@ import (
 
 const (
 	TestMnenomic     = "equip town gesture square tomorrow volume nephew minute witness beef rich gadget actress egg sing secret pole winter alarm law today check violin uncover"
-	TestExpectedAddr = "kava15qdefkmwswysgg4qxgqpqr35k3m49pkx2jdfnw"
+	TestExpectedAddr = "emoney1p4zwsr85euujgu50lezna3yech5yu24475svrh"
 	TestKavaCoinID   = 459
 )
 

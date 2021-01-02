@@ -6,24 +6,24 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/e-money/client/keys"
 	"github.com/tendermint/go-amino"
 	"github.com/tendermint/tendermint/libs/log"
 	rpcclient "github.com/tendermint/tendermint/rpc/client/http"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	tmtypes "github.com/tendermint/tendermint/types"
-
-	"github.com/kava-labs/go-sdk/keys"
 )
 
 // Client facilitates interaction with the cosmos blockchain
 type Client struct {
+	Network ChainNetwork
 	HTTP    *rpcclient.HTTP
 	Keybase keys.KeyManager
 	Cdc     *amino.Codec
 }
 
 // NewClient creates a new cosmos sdk client
-func NewClient(cdc *amino.Codec, mnemonic string, coinID uint32, rpcAddr string) *Client {
+func NewClient(cdc *amino.Codec, mnemonic string, coinID uint32, rpcAddr string, networkType ChainNetwork) *Client {
 	// Set up HTTP client
 	http, err := rpcclient.New(rpcAddr, "/websocket")
 	if err != nil {
@@ -38,6 +38,7 @@ func NewClient(cdc *amino.Codec, mnemonic string, coinID uint32, rpcAddr string)
 	}
 
 	return &Client{
+		Network: networkType,
 		HTTP:    http,
 		Keybase: keyManager,
 		Cdc:     cdc,
