@@ -3,16 +3,19 @@ package keys
 import (
 	"testing"
 
+	"github.com/e-money/em-ledger/types"
 	"github.com/stretchr/testify/require"
 )
 
 const (
 	TestMnenomic     = "equip town gesture square tomorrow volume nephew minute witness beef rich gadget actress egg sing secret pole winter alarm law today check violin uncover"
-	TestExpectedAddr = "emoney1p4zwsr85euujgu50lezna3yech5yu24475svrh"
+	TestExpectedAddr = "emoney1se7u38fjc4jd88tacwvzwyggujl52ydn02uzy7"
 	TestKavaCoinID   = 459
 )
 
 func TestNewMnemonicKeyManager(t *testing.T) {
+	types.ConfigureSDK()
+
 	tests := []struct {
 		name       string
 		mnenomic   string
