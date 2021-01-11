@@ -32,7 +32,29 @@ func NewClient(cdc *amino.Codec, mnemonic string, coinID uint32, rpcAddr string,
 	http.Logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 
 	// Set up key manager
-	keyManager, err := keys.NewMnemonicKeyManager(mnemonic, coinID)
+	keyManager, err := keys.NewMnemonicKeyManager(mnemonic)
+	if err != nil {
+		panic(fmt.Sprintf("new key manager from mnenomic err, err=%s", err.Error()))
+	}
+
+	return &Client{
+		Network: networkType,
+		HTTP:    http,
+		Keybase: keyManager,
+		Cdc:     cdc,
+	}
+}
+
+func NewKavaClient(cdc *amino.Codec, mnemonic string, coinID uint32, rpcAddr string, networkType ChainNetwork) *Client {
+	// Set up HTTP client
+	http, err := rpcclient.New(rpcAddr, "/websocket")
+	if err != nil {
+		panic(err)
+	}
+	http.Logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+
+	// Set up key manager
+	keyManager, err := keys.NewKavaMnemonicKeyManager(mnemonic, coinID)
 	if err != nil {
 		panic(fmt.Sprintf("new key manager from mnenomic err, err=%s", err.Error()))
 	}

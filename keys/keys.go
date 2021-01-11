@@ -13,7 +13,7 @@ import (
 
 	"github.com/btcsuite/btcd/btcec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/x/auth"
 	"github.com/cosmos/go-bip39"
 	"github.com/tendermint/go-amino"
 	"github.com/tendermint/tendermint/crypto"
@@ -32,16 +32,25 @@ const (
 type KeyManager interface {
 	GetPrivKey() crypto.PrivKey
 	GetAddr() sdk.AccAddress
-	Sign(authtypes.StdSignMsg, *amino.Codec) ([]byte, error)
+	Sign(auth.StdSignMsg, *amino.Codec) ([]byte, error)
 }
 
-// NewMnemonicKeyManager creates a new KeyManager from a mnenomic
-func NewMnemonicKeyManager(mnemonic string, coinID uint32) (KeyManager, error) {
+// NewKavaMnemonicKeyManager creates a new KeyManager from a mnenomic
+func NewKavaMnemonicKeyManager(mnemonic string, coinID uint32) (KeyManager, error) {
 	// TODO: Implement correct path
 	fullPath := fmt.Sprintf("%s'/%d'%s", PartialBIP44Prefix, coinID, PartialPath)
 
 	k := keyManager{}
 	err := k.recoveryFromMnemonic(mnemonic, fullPath)
+	return &k, err
+}
+
+// NewMnemonicKeyManager creates a new KeyManager from a mnenomic
+func NewMnemonicKeyManager(mnemonic string) (KeyManager, error) {
+	hdPath := sdk.GetConfig().GetFullFundraiserPath()
+
+	k := keyManager{}
+	err := k.recoveryFromMnemonic(mnemonic, hdPath)
 	return &k, err
 }
 
@@ -67,13 +76,13 @@ func (m *keyManager) GetAddr() sdk.AccAddress {
 }
 
 // Sign signs a standard msg and marshals the result to bytes
-func (m *keyManager) Sign(stdMsg authtypes.StdSignMsg, cdc *amino.Codec) ([]byte, error) {
+func (m *keyManager) Sign(stdMsg auth.StdSignMsg, cdc *amino.Codec) ([]byte, error) {
 	sig, err := m.makeSignature(stdMsg)
 	if err != nil {
 		return nil, err
 	}
 
-	newTx := authtypes.NewStdTx(stdMsg.Msgs, stdMsg.Fee, []authtypes.StdSignature{sig}, stdMsg.Memo)
+	newTx := auth.NewStdTx(stdMsg.Msgs, stdMsg.Fee, []auth.StdSignature{sig}, stdMsg.Memo)
 
 	bz, err := cdc.MarshalBinaryLengthPrefixed(&newTx)
 	if err != nil {
@@ -83,7 +92,7 @@ func (m *keyManager) Sign(stdMsg authtypes.StdSignMsg, cdc *amino.Codec) ([]byte
 	return bz, nil
 }
 
-func (m *keyManager) makeSignature(msg authtypes.StdSignMsg) (sig authtypes.StdSignature, err error) {
+func (m *keyManager) makeSignature(msg auth.StdSignMsg) (sig auth.StdSignature, err error) {
 	if err != nil {
 		return
 	}
@@ -93,7 +102,7 @@ func (m *keyManager) makeSignature(msg authtypes.StdSignMsg) (sig authtypes.StdS
 		return
 	}
 
-	return authtypes.StdSignature{
+	return auth.StdSignature{
 		PubKey:    m.privKey.PubKey(),
 		Signature: sigBytes,
 	}, nil

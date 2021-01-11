@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	TestMnenomic     = "equip town gesture square tomorrow volume nephew minute witness beef rich gadget actress egg sing secret pole winter alarm law today check violin uncover"
-	TestExpectedAddr = "emoney1se7u38fjc4jd88tacwvzwyggujl52ydn02uzy7"
+	TestMnenomic     = "play witness auto coast domain win tiny dress glare bamboo rent mule delay exact arctic vacuum laptop hidden siren sudden six tired fragile penalty"
+	TestExpectedAddr = "emoney1lagqmceycrfpkyu7y6ayrk6jyvru5mkrezacpw"
 	TestKavaCoinID   = 459
 )
 
@@ -27,7 +27,7 @@ func TestNewMnemonicKeyManager(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			keyManager, err := NewMnemonicKeyManager(tc.mnenomic, tc.coinID)
+			keyManager, err := NewMnemonicKeyManager(tc.mnenomic)
 
 			if tc.expectpass {
 				require.Nil(t, err)

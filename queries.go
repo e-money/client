@@ -5,13 +5,13 @@ import (
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	bep3 "github.com/e-money/bep3/module"
 )
 
-// GetSwapByID gets an atomic swap on Kava by ID
+// GetSwapByID gets an atomic swap on e-Money by ID
 func (kc *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap bep3.AtomicSwap, err error) {
 	params := bep3.NewQueryAtomicSwapByID(swapID)
 	bz, err := kc.Cdc.MarshalJSON(params)
@@ -33,7 +33,7 @@ func (kc *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap bep3.AtomicSwap, er
 	return swap, nil
 }
 
-// GetAccount gets the account associated with an address on Kava
+// GetAccount gets the account associated with an address on e-Money
 func (kc *Client) GetAccount(addr sdk.AccAddress) (acc authtypes.BaseAccount, err error) {
 	params := authtypes.NewQueryAccountParams(addr)
 	bz, err := kc.Cdc.MarshalJSON(params)
