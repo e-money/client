@@ -23,7 +23,7 @@ type Client struct {
 }
 
 // NewClient creates a new cosmos sdk client
-func NewClient(cdc *amino.Codec, mnemonic string, coinID uint32, rpcAddr string, networkType ChainNetwork) *Client {
+func NewClient(cdc *amino.Codec, mnemonic string, rpcAddr string, networkType ChainNetwork) *Client {
 	// Set up HTTP client
 	http, err := rpcclient.New(rpcAddr, "/websocket")
 	if err != nil {
