@@ -12,21 +12,21 @@ import (
 )
 
 // GetSwapByID gets an atomic swap on e-Money by ID
-func (kc *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap bep3.AtomicSwap, err error) {
+func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap bep3.AtomicSwap, err error) {
 	params := bep3.NewQueryAtomicSwapByID(swapID)
-	bz, err := kc.Cdc.MarshalJSON(params)
+	bz, err := c.Cdc.MarshalJSON(params)
 	if err != nil {
 		return bep3.AtomicSwap{}, err
 	}
 
 	path := "custom/bep3/swap"
 
-	result, err := kc.ABCIQuery(path, bz)
+	result, err := c.ABCIQuery(path, bz)
 	if err != nil {
 		return bep3.AtomicSwap{}, err
 	}
 
-	err = kc.Cdc.UnmarshalJSON(result, &swap)
+	err = c.Cdc.UnmarshalJSON(result, &swap)
 	if err != nil {
 		return bep3.AtomicSwap{}, err
 	}
@@ -34,21 +34,21 @@ func (kc *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap bep3.AtomicSwap, er
 }
 
 // GetAccount gets the account associated with an address on e-Money
-func (kc *Client) GetAccount(addr sdk.AccAddress) (acc authtypes.BaseAccount, err error) {
+func (c *Client) GetAccount(addr sdk.AccAddress) (acc authtypes.BaseAccount, err error) {
 	params := authtypes.NewQueryAccountParams(addr)
-	bz, err := kc.Cdc.MarshalJSON(params)
+	bz, err := c.Cdc.MarshalJSON(params)
 	if err != nil {
 		return authtypes.BaseAccount{}, err
 	}
 
 	path := fmt.Sprintf("custom/acc/account/%s", addr.String())
 
-	result, err := kc.ABCIQuery(path, bz)
+	result, err := c.ABCIQuery(path, bz)
 	if err != nil {
 		return authtypes.BaseAccount{}, err
 	}
 
-	err = kc.Cdc.UnmarshalJSON(result, &acc)
+	err = c.Cdc.UnmarshalJSON(result, &acc)
 	if err != nil {
 		return authtypes.BaseAccount{}, err
 	}
@@ -56,8 +56,8 @@ func (kc *Client) GetAccount(addr sdk.AccAddress) (acc authtypes.BaseAccount, er
 	return acc, err
 }
 
-func (kc *Client) GetChainID() (string, error) {
-	result, err := kc.HTTP.Status()
+func (c *Client) GetChainID() (string, error) {
+	result, err := c.HTTP.Status()
 	if err != nil {
 		return "", err
 	}
@@ -65,12 +65,12 @@ func (kc *Client) GetChainID() (string, error) {
 }
 
 // ABCIQuery sends a query to Kava
-func (kc *Client) ABCIQuery(path string, data tmbytes.HexBytes) ([]byte, error) {
+func (c *Client) ABCIQuery(path string, data tmbytes.HexBytes) ([]byte, error) {
 	if err := ValidateABCIQuery(path, data); err != nil {
 		return []byte{}, err
 	}
 
-	result, err := kc.HTTP.ABCIQuery(path, data)
+	result, err := c.HTTP.ABCIQuery(path, data)
 	if err != nil {
 		return []byte{}, err
 	}
