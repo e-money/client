@@ -22,10 +22,10 @@ import (
 
 const (
 	defaultBIP39Passphrase = ""
-	PartialBIP44Prefix     = "44"
-	PartialPath            = "/0/0"
-	// TODO check id how it applies to e-money
-	Bip44CoinType = 459
+	// Kava HID wallet generation specific
+	PartialKavaBIP44Prefix = "44"
+	PartialKavaPath        = "0'/0/0"
+	Bip44KavaCoinType      = 459
 )
 
 // KeyManager is an interface for common methods on KeyManagers
@@ -37,8 +37,8 @@ type KeyManager interface {
 
 // NewKavaMnemonicKeyManager creates a new KeyManager from a mnenomic
 func NewKavaMnemonicKeyManager(mnemonic string, coinID uint32) (KeyManager, error) {
-	// TODO: Implement correct path
-	fullPath := fmt.Sprintf("%s'/%d'%s", PartialBIP44Prefix, coinID, PartialPath)
+	fullBIP44Prefix := fmt.Sprintf("%s'/%d'/", PartialKavaBIP44Prefix, coinID)
+	fullPath := fullBIP44Prefix + PartialKavaPath
 
 	k := keyManager{}
 	err := k.recoveryFromMnemonic(mnemonic, fullPath)
