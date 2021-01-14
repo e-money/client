@@ -69,24 +69,24 @@ func NewKavaClient(cdc *amino.Codec, mnemonic string, coinID uint32, rpcAddr str
 
 // Broadcast sends a message to the Kava blockchain as a transaction.
 // This pays no transaction fees.
-func (kc *Client) Broadcast(m sdk.Msg, syncType SyncType) (*ctypes.ResultBroadcastTx, error) {
+func (c *Client) Broadcast(m sdk.Msg, syncType SyncType) (*ctypes.ResultBroadcastTx, error) {
 	fee := authtypes.NewStdFee(250000, nil)
-	return kc.BroadcastWithFee(m, fee, syncType)
+	return c.BroadcastWithFee(m, fee, syncType)
 }
 
-// BroadcastWithFee sends a message to the Kava blockchain as a transaction, paying the specified transaction fee.
-func (kc *Client) BroadcastWithFee(m sdk.Msg, fee authtypes.StdFee, syncType SyncType) (*ctypes.ResultBroadcastTx, error) {
-	signBz, err := kc.sign(m, fee)
+// BroadcastWithFee sends a message to the Cosmos blockchain as a transaction, paying the specified transaction fee.
+func (c *Client) BroadcastWithFee(m sdk.Msg, fee authtypes.StdFee, syncType SyncType) (*ctypes.ResultBroadcastTx, error) {
+	signBz, err := c.sign(m, fee)
 	if err != nil {
 		return nil, err
 	}
 	switch syncType {
 	case Async:
-		return kc.BroadcastTxAsync(signBz)
+		return c.BroadcastTxAsync(signBz)
 	case Sync:
-		return kc.BroadcastTxSync(signBz)
+		return c.BroadcastTxSync(signBz)
 	case Commit:
-		commitRes, err := kc.BroadcastTxCommit(signBz)
+		commitRes, err := c.BroadcastTxCommit(signBz)
 		if err != nil {
 			return nil, err
 		}
@@ -109,12 +109,12 @@ func (kc *Client) BroadcastWithFee(m sdk.Msg, fee authtypes.StdFee, syncType Syn
 	}
 }
 
-func (kc *Client) sign(m sdk.Msg, fee authtypes.StdFee) ([]byte, error) {
-	if kc.Keybase == nil {
+func (c *Client) sign(m sdk.Msg, fee authtypes.StdFee) ([]byte, error) {
+	if c.Keybase == nil {
 		return nil, fmt.Errorf("Keys are missing, must to set key")
 	}
 
-	chainID, err := kc.GetChainID()
+	chainID, err := c.GetChainID()
 	if err != nil {
 		return nil, fmt.Errorf("could not fetch chain id: %w", err)
 	}
@@ -129,8 +129,8 @@ func (kc *Client) sign(m sdk.Msg, fee authtypes.StdFee) ([]byte, error) {
 	}
 
 	if signMsg.Sequence == 0 || signMsg.AccountNumber == 0 {
-		fromAddr := kc.Keybase.GetAddr()
-		acc, err := kc.GetAccount(fromAddr)
+		fromAddr := c.Keybase.GetAddr()
+		acc, err := c.GetAccount(fromAddr)
 		if err != nil {
 			return nil, err
 		}
@@ -149,7 +149,7 @@ func (kc *Client) sign(m sdk.Msg, fee authtypes.StdFee) ([]byte, error) {
 		}
 	}
 
-	signedMsg, err := kc.Keybase.Sign(*signMsg, kc.Cdc)
+	signedMsg, err := c.Keybase.Sign(*signMsg, c.Cdc)
 	if err != nil {
 		return nil, err
 	}
@@ -158,25 +158,25 @@ func (kc *Client) sign(m sdk.Msg, fee authtypes.StdFee) ([]byte, error) {
 }
 
 // BroadcastTxCommit sends a transaction using commit
-func (kc *Client) BroadcastTxCommit(tx tmtypes.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
+func (c *Client) BroadcastTxCommit(tx tmtypes.Tx) (*ctypes.ResultBroadcastTxCommit, error) {
 	if err := ValidateTx(tx); err != nil {
 		return nil, err
 	}
-	return kc.HTTP.BroadcastTxCommit(tx)
+	return c.HTTP.BroadcastTxCommit(tx)
 }
 
 // BroadcastTxAsync sends a transaction using async
-func (kc *Client) BroadcastTxAsync(tx tmtypes.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (c *Client) BroadcastTxAsync(tx tmtypes.Tx) (*ctypes.ResultBroadcastTx, error) {
 	if err := ValidateTx(tx); err != nil {
 		return nil, err
 	}
-	return kc.HTTP.BroadcastTxAsync(tx)
+	return c.HTTP.BroadcastTxAsync(tx)
 }
 
 // BroadcastTxSync sends a transaction using sync
-func (kc *Client) BroadcastTxSync(tx tmtypes.Tx) (*ctypes.ResultBroadcastTx, error) {
+func (c *Client) BroadcastTxSync(tx tmtypes.Tx) (*ctypes.ResultBroadcastTx, error) {
 	if err := ValidateTx(tx); err != nil {
 		return nil, err
 	}
-	return kc.HTTP.BroadcastTxSync(tx)
+	return c.HTTP.BroadcastTxSync(tx)
 }
