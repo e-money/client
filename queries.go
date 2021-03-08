@@ -37,16 +37,43 @@ func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap bep3.AtomicSwap, err
 	}
 	return swap, nil
 }
+// GetAccount gets the account associated with an address on e-Money by gRPC
+func (c *Client) GetAccountGrpc(addr string) (acc authtypes.AccountI, err error) {
+	// TODO test approach
+	q := authtypes.NewQueryClient(c.grpcConn)
+	res, err := q.Account(context.Background(),
+		&authtypes.QueryAccountRequest{Address: addr})
+	if err != nil {
+		return nil, err
+	}
+
+	interfaceRegistry := types.NewInterfaceRegistry()
+	std.RegisterInterfaces(interfaceRegistry)
+	marshaler := codec.NewProtoCodec(interfaceRegistry)
+
+	var resAccount authtypes.AccountI
+	if err := marshaler.UnpackAny(res.Account, &resAccount); err != nil {
+		return nil, errors.New("did not retrieve the account")
+	}
+
+	return resAccount, nil
+}
 
 // GetAccount gets the account associated with an address on e-Money
-func (c *Client) GetAccount(addr sdk.AccAddress) (acc authtypes.BaseAccount, err error) {
-	params := authtypes.NewQueryAccountParams(addr)
-	bz, err := c.Cdc.MarshalJSON(params)
+func (c *Client) GetAccount(addr string) (account authtypes.BaseAccount, err error) {
+	res, err := rest.GetRequest("http://localhost:1317/cosmos/auth/v1beta1/accounts/"+addr)
 	if err != nil {
 		return authtypes.BaseAccount{}, err
 	}
 
-	path := fmt.Sprintf("custom/acc/account/%s", addr.String())
+	var resAccount authtypes.BaseAccount
+	if err:=c.Cdc.UnmarshalJSON(res, resAccount); err != nil {
+		return authtypes.BaseAccount{}, err
+	}
+
+	return resAccount, err
+}
+
 // GetDenomBalance gets the balance associated with an address on e-Money by gRPC
 func (c *Client) GetDenomBalanceGRPC(addr string) (*sdk.Coin, error) {
 	q := banktypes.NewQueryClient(c.grpcConn)
