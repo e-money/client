@@ -98,13 +98,13 @@ func (c *Client) GetChainID() (string, error) {
 	return result.NodeInfo.Network, nil
 }
 
-// ABCIQuery sends a query to Kava
+// ABCIQuery sends a query to e-Money node
 func (c *Client) ABCIQuery(path string, data tmbytes.HexBytes) ([]byte, error) {
 	if err := ValidateABCIQuery(path, data); err != nil {
 		return []byte{}, err
 	}
 
-	result, err := c.HTTP.ABCIQuery(path, data)
+	result, err := c.HTTP.ABCIQuery(context.Background(), path, data)
 	if err != nil {
 		return []byte{}, err
 	}
