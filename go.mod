@@ -1,15 +1,18 @@
 module github.com/e-money/client
 
-go 1.13
+go 1.15
 
 require (
-	github.com/btcsuite/btcd v0.20.1-beta
-	github.com/cosmos/cosmos-sdk v0.39.1
-	github.com/cosmos/go-bip39 v0.0.0-20180819234021-555e2067c45d
-	// TODO: tag json fix and update ref here
-	github.com/e-money/bep3 v0.2.1
-	github.com/e-money/em-ledger v0.9.4
-	github.com/stretchr/testify v1.6.1
-	github.com/tendermint/go-amino v0.15.1
-	github.com/tendermint/tendermint v0.33.8
+	github.com/bartekn/go-bip39 v0.0.0-20171116152956-a05967ea095d // indirect
+	github.com/btcsuite/btcd v0.21.0-beta
+	github.com/cosmos/cosmos-sdk v0.42.1
+	github.com/cosmos/go-bip39 v1.0.0
+	github.com/e-money/bep3 v0.2.2-0.20210314111415-cb3754badb4e
+	github.com/e-money/em-ledger v0.9.3-0.20210311115650-b3ce4016e552
+	github.com/stretchr/testify v1.7.0
+	github.com/tendermint/go-amino v0.16.0
+	github.com/tendermint/iavl v0.14.0 // indirect
+	github.com/tendermint/tendermint v0.34.8
 )
+
+replace github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
