@@ -1,10 +1,15 @@
 package client
 
 import (
+	"context"
 	"errors"
-	"fmt"
-
+	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/std"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/rest"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	"github.com/tendermint/go-amino"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
@@ -42,8 +47,37 @@ func (c *Client) GetAccount(addr sdk.AccAddress) (acc authtypes.BaseAccount, err
 	}
 
 	path := fmt.Sprintf("custom/acc/account/%s", addr.String())
+// GetDenomBalance gets the balance associated with an address on e-Money by gRPC
+func (c *Client) GetDenomBalanceGRPC(addr string) (*sdk.Coin, error) {
+	q := banktypes.NewQueryClient(c.grpcConn)
+	res, err := q.Balance(
+		context.Background(),
+		&banktypes.QueryBalanceRequest{
+			Address: addr,
+		})
+	if err != nil {
+		return nil, err
+	}
 
-	result, err := c.ABCIQuery(path, bz)
+	return res.Balance, nil
+}
+
+// GetAccount gets the account associated with an address on e-Money
+func (c *Client) GetDenomBalance(addr string) (*sdk.Coin, error) {
+	res, err := rest.GetRequest("http://localhost:1317/cosmos/auth/v1beta1/accounts/"+addr)
+	if err != nil {
+		return nil, err
+	}
+
+	var balance sdk.Coin
+	if err:=c.Cdc.UnmarshalJSON(res, &balance); err != nil {
+		return nil, err
+	}
+
+	return &balance, err
+}
+
+// GetAccount gets the account associated with an address on e-Money
 	if err != nil {
 		return authtypes.BaseAccount{}, err
 	}
