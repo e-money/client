@@ -2,6 +2,8 @@ package client
 
 import (
 	"fmt"
+	"github.com/cosmos/cosmos-sdk/codec"
+	"google.golang.org/grpc"
 	"os"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -9,9 +11,11 @@ import (
 	"github.com/e-money/client/keys"
 	"github.com/tendermint/go-amino"
 	"github.com/tendermint/tendermint/libs/log"
+	"github.com/cosmos/cosmos-sdk/codec/types"
 	rpcclient "github.com/tendermint/tendermint/rpc/client/http"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	tmtypes "github.com/tendermint/tendermint/types"
+
 )
 
 // Client facilitates interaction with the cosmos blockchain
@@ -19,7 +23,9 @@ type Client struct {
 	Network ChainNetwork
 	HTTP    *rpcclient.HTTP
 	Keybase keys.KeyManager
-	Cdc     *amino.Codec
+	Cdc     *codec.LegacyAmino
+	Marshaller codec.BinaryMarshaler
+	grpcConn *grpc.ClientConn
 }
 
 // NewClient creates a new cosmos sdk client
@@ -31,6 +37,15 @@ func NewClient(cdc *amino.Codec, mnemonic string, rpcAddr string, networkType Ch
 	}
 	http.Logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 
+	// Create a connection to the gRPC server.
+	grpcConn, err := grpc.Dial(
+		"127.0.0.1:9090",
+		grpc.WithInsecure(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	// Set up key manager
 	keyManager, err := keys.NewMnemonicKeyManager(mnemonic)
 	if err != nil {
@@ -41,29 +56,9 @@ func NewClient(cdc *amino.Codec, mnemonic string, rpcAddr string, networkType Ch
 		Network: networkType,
 		HTTP:    http,
 		Keybase: keyManager,
-		Cdc:     cdc,
-	}
-}
-
-func NewKavaClient(cdc *amino.Codec, mnemonic string, coinID uint32, rpcAddr string, networkType ChainNetwork) *Client {
-	// Set up HTTP client
-	http, err := rpcclient.New(rpcAddr, "/websocket")
-	if err != nil {
-		panic(err)
-	}
-	http.Logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
-
-	// Set up key manager
-	keyManager, err := keys.NewKavaMnemonicKeyManager(mnemonic, coinID)
-	if err != nil {
-		panic(fmt.Sprintf("new key manager from mnenomic err, err=%s", err.Error()))
-	}
-
-	return &Client{
-		Network: networkType,
-		HTTP:    http,
-		Keybase: keyManager,
-		Cdc:     cdc,
+		Cdc:     codec.NewLegacyAmino(),
+		Marshaller: codec.NewProtoCodec(types.NewInterfaceRegistry()),
+		grpcConn: grpcConn,
 	}
 }
 
