@@ -1,21 +1,31 @@
 package client
 
 import (
+	"context"
 	"fmt"
+	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/std"
+	"github.com/cosmos/cosmos-sdk/types/rest"
+	"github.com/cosmos/cosmos-sdk/types/tx/signing"
+	"github.com/cosmos/cosmos-sdk/x/auth/legacy/legacytx"
 	"google.golang.org/grpc"
 	"os"
-
-	sdk "github.com/cosmos/cosmos-sdk/types"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	"github.com/e-money/client/keys"
-	"github.com/tendermint/go-amino"
-	"github.com/tendermint/tendermint/libs/log"
+	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 	"github.com/cosmos/cosmos-sdk/codec/types"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/tx"
+	"github.com/e-money/client/keys"
+	"github.com/tendermint/tendermint/libs/log"
 	rpcclient "github.com/tendermint/tendermint/rpc/client/http"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	tmtypes "github.com/tendermint/tendermint/types"
+)
 
+const (
+	feeDenom = "ungm"
+	restSrv = "http://localhost:1317"
+	jsonContent = "application/json"
 )
 
 // Client facilitates interaction with the cosmos blockchain
@@ -26,16 +36,27 @@ type Client struct {
 	Cdc     *codec.LegacyAmino
 	Marshaller codec.BinaryMarshaler
 	grpcConn *grpc.ClientConn
+
+	LegacyTxCfg *legacytx.StdTxConfig
+	ProtoTxCfg client.TxConfig
 }
 
 // NewClient creates a new cosmos sdk client
-func NewClient(cdc *amino.Codec, mnemonic string, rpcAddr string, networkType ChainNetwork) *Client {
+func NewClient(mnemonic string, rpcAddr string, networkType ChainNetwork) *Client {
 	// Set up HTTP client
 	http, err := rpcclient.New(rpcAddr, "/websocket")
 	if err != nil {
 		panic(err)
 	}
 	http.Logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
+
+	amino := codec.NewLegacyAmino()
+	intRegistry := types.NewInterfaceRegistry()
+	proto := codec.NewProtoCodec(intRegistry)
+
+	std.RegisterLegacyAminoCodec(amino)
+	std.RegisterInterfaces(intRegistry)
+
 
 	// Create a connection to the gRPC server.
 	grpcConn, err := grpc.Dial(
@@ -56,100 +77,86 @@ func NewClient(cdc *amino.Codec, mnemonic string, rpcAddr string, networkType Ch
 		Network: networkType,
 		HTTP:    http,
 		Keybase: keyManager,
-		Cdc:     codec.NewLegacyAmino(),
-		Marshaller: codec.NewProtoCodec(types.NewInterfaceRegistry()),
+		Cdc:     amino,
+		Marshaller: proto,
 		grpcConn: grpcConn,
+		LegacyTxCfg: &legacytx.StdTxConfig{Cdc: amino},
+		ProtoTxCfg: authtx.NewTxConfig(proto, authtx.DefaultSignModes),
 	}
 }
 
-// Broadcast sends a message to the Kava blockchain as a transaction.
+// Broadcast sends a message to the e-Money blockchain as a transaction.
 // This pays no transaction fees.
-func (c *Client) Broadcast(m sdk.Msg, syncType SyncType) (*ctypes.ResultBroadcastTx, error) {
-	fee := authtypes.NewStdFee(250000, nil)
+func (c *Client) Broadcast(m sdk.Msg, syncType tx.BroadcastMode) (*tx.BroadcastTxResponse, error) {
+
+	fee := sdk.NewCoins(sdk.NewCoin(feeDenom, sdk.NewInt(250000)))
 	return c.BroadcastWithFee(m, fee, syncType)
 }
 
 // BroadcastWithFee sends a message to the Cosmos blockchain as a transaction, paying the specified transaction fee.
-func (c *Client) BroadcastWithFee(m sdk.Msg, fee authtypes.StdFee, syncType SyncType) (*ctypes.ResultBroadcastTx, error) {
+func (c *Client) BroadcastWithFee(m sdk.Msg, fee sdk.Coins, syncType tx.BroadcastMode) (*tx.BroadcastTxResponse, error) {
 	signBz, err := c.sign(m, fee)
 	if err != nil {
 		return nil, err
 	}
-	switch syncType {
-	case Async:
-		return c.BroadcastTxAsync(signBz)
-	case Sync:
-		return c.BroadcastTxSync(signBz)
-	case Commit:
-		commitRes, err := c.BroadcastTxCommit(signBz)
-		if err != nil {
-			return nil, err
-		}
-		if commitRes.CheckTx.IsErr() {
-			return &ctypes.ResultBroadcastTx{
-				Code: commitRes.CheckTx.Code,
-				Log:  commitRes.CheckTx.Log,
-				Hash: commitRes.Hash,
-				Data: commitRes.CheckTx.Data,
-			}, nil
-		}
-		return &ctypes.ResultBroadcastTx{
-			Code: commitRes.DeliverTx.Code,
-			Log:  commitRes.DeliverTx.Log,
-			Hash: commitRes.Hash,
-			Data: commitRes.DeliverTx.Data,
-		}, nil
-	default:
-		return nil, fmt.Errorf("unknown synctype")
-	}
-}
 
-func (c *Client) sign(m sdk.Msg, fee authtypes.StdFee) ([]byte, error) {
-	if c.Keybase == nil {
-		return nil, fmt.Errorf("Keys are missing, must to set key")
-	}
-
-	chainID, err := c.GetChainID()
-	if err != nil {
-		return nil, fmt.Errorf("could not fetch chain id: %w", err)
-	}
-
-	signMsg := &authtypes.StdSignMsg{
-		ChainID:       chainID,
-		AccountNumber: 0,
-		Sequence:      0,
-		Fee:           fee,
-		Msgs:          []sdk.Msg{m},
-		Memo:          "",
-	}
-
-	if signMsg.Sequence == 0 || signMsg.AccountNumber == 0 {
-		fromAddr := c.Keybase.GetAddr()
-		acc, err := c.GetAccount(fromAddr)
-		if err != nil {
-			return nil, err
-		}
-
-		if acc.Address.Empty() {
-			return nil, fmt.Errorf("the signer account does not exist on kava")
-		}
-
-		signMsg.Sequence = acc.Sequence
-		signMsg.AccountNumber = acc.AccountNumber
-	}
-
-	for _, m := range signMsg.Msgs {
-		if err := m.ValidateBasic(); err != nil {
-			return nil, err
-		}
-	}
-
-	signedMsg, err := c.Keybase.Sign(*signMsg, c.Cdc)
+	txBytes, err := c.LegacyTxCfg.TxEncoder()(signBz)
 	if err != nil {
 		return nil, err
 	}
 
-	return signedMsg, nil
+	txreq := tx.BroadcastTxRequest{
+		Mode:    syncType,
+		TxBytes: txBytes,
+	}
+
+	req, err := c.Cdc.MarshalJSON(txreq)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := rest.PostRequest(
+		fmt.Sprintf("%s/cosmos/tx/v1beta1/txs", restSrv), jsonContent, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var result tx.BroadcastTxResponse
+	if err = c.Cdc.UnmarshalJSON(res, &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func (c *Client) sign(m sdk.Msg, fee sdk.Coins) (sdk.Tx, error) {
+	if c.Keybase == nil {
+		return nil, fmt.Errorf("keys are missing, must to set key")
+	}
+
+	if err := m.ValidateBasic(); err != nil {
+		return nil, err
+	}
+
+	txBuilder := c.LegacyTxCfg.NewTxBuilder()
+	txBuilder.SetFeeAmount(fee)
+	if err := txBuilder.SetMsgs(m); err != nil {
+		return nil, err
+	}
+	txBuilder.SetMemo("ByClient")
+
+	sig := signing.SignatureV2{
+		PubKey:   c.Keybase.GetPrivKey().PubKey(),
+		Data:     &signing.SingleSignatureData{
+			SignMode:  signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON,
+		},
+	}
+
+	if err := txBuilder.SetSignatures(sig); err != nil {
+		return nil, err
+	}
+
+	return txBuilder.GetTx(), nil
 }
 
 // BroadcastTxCommit sends a transaction using commit
@@ -157,7 +164,7 @@ func (c *Client) BroadcastTxCommit(tx tmtypes.Tx) (*ctypes.ResultBroadcastTxComm
 	if err := ValidateTx(tx); err != nil {
 		return nil, err
 	}
-	return c.HTTP.BroadcastTxCommit(tx)
+	return c.HTTP.BroadcastTxCommit(context.Background(),tx)
 }
 
 // BroadcastTxAsync sends a transaction using async
@@ -165,7 +172,7 @@ func (c *Client) BroadcastTxAsync(tx tmtypes.Tx) (*ctypes.ResultBroadcastTx, err
 	if err := ValidateTx(tx); err != nil {
 		return nil, err
 	}
-	return c.HTTP.BroadcastTxAsync(tx)
+	return c.HTTP.BroadcastTxAsync(context.Background(), tx)
 }
 
 // BroadcastTxSync sends a transaction using sync
@@ -173,5 +180,5 @@ func (c *Client) BroadcastTxSync(tx tmtypes.Tx) (*ctypes.ResultBroadcastTx, erro
 	if err := ValidateTx(tx); err != nil {
 		return nil, err
 	}
-	return c.HTTP.BroadcastTxSync(tx)
+	return c.HTTP.BroadcastTxSync(context.Background(),tx)
 }

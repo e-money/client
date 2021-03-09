@@ -9,7 +9,6 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/rest"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	"github.com/tendermint/go-amino"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
 
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
@@ -105,20 +104,23 @@ func (c *Client) GetDenomBalance(addr string) (*sdk.Coin, error) {
 }
 
 // GetAccount gets the account associated with an address on e-Money
+func (c *Client) GetBalances(addr string) (account authtypes.BaseAccount, err error) {
+	res, err := rest.GetRequest("http://localhost:1317/cosmos/bank/v1beta1/balances/"+addr)
 	if err != nil {
 		return authtypes.BaseAccount{}, err
 	}
 
-	err = c.Cdc.UnmarshalJSON(result, &acc)
-	if err != nil {
+	var resAccount authtypes.BaseAccount
+	amino := codec.NewLegacyAmino()
+	if err:=amino.UnmarshalJSON(res, resAccount); err != nil {
 		return authtypes.BaseAccount{}, err
 	}
 
-	return acc, err
+	return resAccount, err
 }
 
 func (c *Client) GetChainID() (string, error) {
-	result, err := c.HTTP.Status()
+	result, err := c.HTTP.Status(context.Background())
 	if err != nil {
 		return "", err
 	}
