@@ -7,42 +7,28 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/cosmos/cosmos-sdk/codec"
 	"math/big"
 	"strconv"
 	"strings"
 
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/x/auth"
+	"github.com/cosmos/cosmos-sdk/x/auth/legacy/legacytx"
 	"github.com/cosmos/go-bip39"
-	"github.com/tendermint/go-amino"
-	"github.com/tendermint/tendermint/crypto"
-	"github.com/tendermint/tendermint/crypto/secp256k1"
 )
 
 const (
 	defaultBIP39Passphrase = ""
-	// Kava HID wallet generation specific
-	PartialKavaBIP44Prefix = "44"
-	PartialKavaPath        = "0'/0/0"
-	Bip44KavaCoinType      = 459
 )
 
 // KeyManager is an interface for common methods on KeyManagers
 type KeyManager interface {
-	GetPrivKey() crypto.PrivKey
+	GetPrivKey() cryptotypes.PrivKey
 	GetAddr() sdk.AccAddress
-	Sign(auth.StdSignMsg, *amino.Codec) ([]byte, error)
-}
-
-// NewKavaMnemonicKeyManager creates a new KeyManager from a mnenomic
-func NewKavaMnemonicKeyManager(mnemonic string, coinID uint32) (KeyManager, error) {
-	fullBIP44Prefix := fmt.Sprintf("%s'/%d'/", PartialKavaBIP44Prefix, coinID)
-	fullPath := fullBIP44Prefix + PartialKavaPath
-
-	k := keyManager{}
-	err := k.recoveryFromMnemonic(mnemonic, fullPath)
-	return &k, err
+	Sign(legacytx.StdSignMsg, *codec.LegacyAmino) ([]byte, error)
 }
 
 // NewMnemonicKeyManager creates a new KeyManager from a mnenomic
@@ -62,12 +48,12 @@ func NewPrivateKeyManager(priKey string) (KeyManager, error) {
 }
 
 type keyManager struct {
-	privKey  crypto.PrivKey
+	privKey  cryptotypes.PrivKey
 	addr     sdk.AccAddress
 	mnemonic string
 }
 
-func (m *keyManager) GetPrivKey() crypto.PrivKey {
+func (m *keyManager) GetPrivKey() cryptotypes.PrivKey {
 	return m.privKey
 }
 
@@ -76,13 +62,14 @@ func (m *keyManager) GetAddr() sdk.AccAddress {
 }
 
 // Sign signs a standard msg and marshals the result to bytes
-func (m *keyManager) Sign(stdMsg auth.StdSignMsg, cdc *amino.Codec) ([]byte, error) {
+func (m *keyManager) Sign(stdMsg legacytx.StdSignMsg, cdc *codec.LegacyAmino) ([]byte, error) {
 	sig, err := m.makeSignature(stdMsg)
 	if err != nil {
 		return nil, err
 	}
 
-	newTx := auth.NewStdTx(stdMsg.Msgs, stdMsg.Fee, []auth.StdSignature{sig}, stdMsg.Memo)
+	newTx := legacytx.NewStdTx(stdMsg.Msgs, stdMsg.Fee,
+		[]legacytx.StdSignature{sig}, stdMsg.Memo)
 
 	bz, err := cdc.MarshalBinaryLengthPrefixed(&newTx)
 	if err != nil {
@@ -92,17 +79,13 @@ func (m *keyManager) Sign(stdMsg auth.StdSignMsg, cdc *amino.Codec) ([]byte, err
 	return bz, nil
 }
 
-func (m *keyManager) makeSignature(msg auth.StdSignMsg) (sig auth.StdSignature, err error) {
-	if err != nil {
-		return
-	}
-
+func (m *keyManager) makeSignature(msg legacytx.StdSignMsg) (sig legacytx.StdSignature, err error) {
 	sigBytes, err := m.privKey.Sign(msg.Bytes())
 	if err != nil {
 		return
 	}
 
-	return auth.StdSignature{
+	return legacytx.StdSignature{
 		PubKey:    m.privKey.PubKey(),
 		Signature: sigBytes,
 	}, nil
@@ -123,13 +106,14 @@ func (m *keyManager) recoveryFromMnemonic(mnemonic, keyPath string) error {
 	if err != nil {
 		return err
 	}
-	priKey := secp256k1.PrivKeySecp256k1(derivedPriv)
-	addr := sdk.AccAddress(priKey.PubKey().Address())
+	secp256k1.GenPrivKey()
+	prvKey := secp256k1.GenPrivKeyFromSecret(derivedPriv[:])
+	addr := sdk.AccAddress(prvKey.PubKey().Address())
 	if err != nil {
 		return err
 	}
 	m.addr = addr
-	m.privKey = priKey
+	m.privKey = prvKey
 	m.mnemonic = mnemonic
 	return nil
 }
@@ -211,7 +195,7 @@ func (m *keyManager) recoveryFromPrivateKey(privateKey string) error {
 	}
 	var keyBytesArray [32]byte
 	copy(keyBytesArray[:], priBytes[:32])
-	priKey := secp256k1.PrivKeySecp256k1(keyBytesArray)
+	priKey := secp256k1.GenPrivKeyFromSecret(keyBytesArray[:])
 	addr := sdk.AccAddress(priKey.PubKey().Address())
 	m.addr = addr
 	m.privKey = priKey
