@@ -13,6 +13,7 @@ require (
 	github.com/tendermint/go-amino v0.16.0
 	github.com/tendermint/iavl v0.14.0 // indirect
 	github.com/tendermint/tendermint v0.34.8
+	google.golang.org/grpc v1.35.0 // indirect
 )
 
 replace github.com/gogo/protobuf => github.com/regen-network/protobuf v1.3.3-alpha.regen.1
