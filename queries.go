@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/std"
@@ -89,8 +90,11 @@ func (c *Client) GetDenomBalanceGRPC(addr string) (*sdk.Coin, error) {
 }
 
 // GetAccount gets the account associated with an address on e-Money
-func (c *Client) GetDenomBalance(addr string) (*sdk.Coin, error) {
-	res, err := rest.GetRequest("http://localhost:1317/cosmos/auth/v1beta1/accounts/"+addr)
+func (c *Client) GetDenomBalance(addr, denom string) (*sdk.Coin, error) {
+	res, err := rest.
+		GetRequest(fmt.Sprintf(
+			"http://localhost:1317/cosmos/auth/v1beta1/accounts/%s/%s",
+			addr, denom))
 	if err != nil {
 		return nil, err
 	}
@@ -104,19 +108,18 @@ func (c *Client) GetDenomBalance(addr string) (*sdk.Coin, error) {
 }
 
 // GetAccount gets the account associated with an address on e-Money
-func (c *Client) GetBalances(addr string) (account authtypes.BaseAccount, err error) {
+func (c *Client) GetBalances(addr string) (*sdk.Coins,error) {
 	res, err := rest.GetRequest("http://localhost:1317/cosmos/bank/v1beta1/balances/"+addr)
 	if err != nil {
-		return authtypes.BaseAccount{}, err
+		return nil, err
 	}
 
-	var resAccount authtypes.BaseAccount
-	amino := codec.NewLegacyAmino()
-	if err:=amino.UnmarshalJSON(res, resAccount); err != nil {
-		return authtypes.BaseAccount{}, err
+	var balances sdk.Coins
+	if err:=c.Cdc.UnmarshalJSON(res, &balances); err != nil {
+		return nil, err
 	}
 
-	return resAccount, err
+	return &balances, err
 }
 
 func (c *Client) GetChainID() (string, error) {
