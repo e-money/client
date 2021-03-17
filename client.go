@@ -6,7 +6,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/std"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/rest"
 	"github.com/cosmos/cosmos-sdk/types/tx"
@@ -42,7 +41,7 @@ type Client struct {
 }
 
 // NewClient creates a new cosmos sdk client
-func NewClient(mnemonic string, rpcAddr string, networkType ChainNetwork) *Client {
+func NewClient(amino *codec.LegacyAmino,mnemonic string, rpcAddr string, networkType ChainNetwork) *Client {
 	// Set up HTTP client
 	http, err := rpcclient.New(rpcAddr, "/websocket")
 	if err != nil {
@@ -50,13 +49,8 @@ func NewClient(mnemonic string, rpcAddr string, networkType ChainNetwork) *Clien
 	}
 	http.Logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 
-	amino := codec.NewLegacyAmino()
 	intRegistry := types.NewInterfaceRegistry()
 	proto := codec.NewProtoCodec(intRegistry)
-
-	std.RegisterLegacyAminoCodec(amino)
-	std.RegisterInterfaces(intRegistry)
-
 
 	// Create a connection to the gRPC server.
 	grpcConn, err := grpc.Dial(
