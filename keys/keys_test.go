@@ -33,7 +33,8 @@ func TestNewMnemonicKeyManager(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			keyManager, err := NewMnemonicKeyManager(tc.mnenomic)
+			const userName = "userSender"
+			keyManager, err := NewMnemonicKeyManager(tc.mnenomic, userName)
 
 			if tc.expectpass {
 				require.Nil(t, err)
@@ -42,6 +43,11 @@ func TestNewMnemonicKeyManager(t *testing.T) {
 				addr := keyManager.GetAddr()
 				fmt.Println(tc.name, "addr:", addr)
 				require.Equal(t, tc.expectedAddr, addr.String())
+
+				acct, err := keyManager.Keyring.Key(userName)
+				require.NoError(t, err)
+				require.NotNil(t, acct)
+				require.Equal(t, addr.String(), acct.GetAddress().String())
 			} else {
 				require.NotNil(t, err)
 			}

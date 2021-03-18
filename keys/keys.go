@@ -14,14 +14,8 @@ const (
 	appName                = "e-Money-client"
 )
 
-// KeyManager is an interface for common methods on KeyManagers
-type KeyManager interface {
-	GetPrivKey() cryptotypes.PrivKey
-	GetAddr() sdk.AccAddress
-	Sign(legacytx.StdSignMsg, *codec.LegacyAmino) ([]byte, error)
-}
-
-type keyManager struct {
+type KeyManager struct {
+	Keyring  keyring.Keyring
 	Account  keyring.Info
 	privKey  cryptotypes.PrivKey
 	addr     sdk.AccAddress
@@ -29,9 +23,9 @@ type keyManager struct {
 }
 
 // NewMnemonicKeyManager creates a new KeyManager from a mnenomic
-func NewMnemonicKeyManager(mnemonic string) (KeyManager, error) {
+func NewMnemonicKeyManager(mnemonic, accountName string) (*KeyManager, error) {
 	hdPath := sdk.FullFundraiserPath
-	prvKey, err := GenPrvKey(mnemonic, defaultBIP39Passphrase, hdPath, hd.Secp256k1)
+	prvKey, err := GenPrvKeyByMnemonic(mnemonic, defaultBIP39Passphrase, hdPath, hd.Secp256k1)
 	keybase, err := keyring.New(
 		appName, keyring.BackendMemory, hdPath, nil,
 	)
@@ -39,13 +33,14 @@ func NewMnemonicKeyManager(mnemonic string) (KeyManager, error) {
 		return nil, err
 	}
 	memInfo, err :=
-		keybase.NewAccount("",
+		keybase.NewAccount(accountName,
 			mnemonic, defaultBIP39Passphrase, hdPath, hd.Secp256k1)
 	if err != nil {
 		return nil, err
 	}
 
-	k := keyManager{
+	k := KeyManager{
+		Keyring:  keybase,
 		Account:  memInfo,
 		privKey:  prvKey,
 		addr:     memInfo.GetAddress(),
@@ -54,7 +49,7 @@ func NewMnemonicKeyManager(mnemonic string) (KeyManager, error) {
 	return &k, err
 }
 
-func GenPrvKey(mnemonic, bip39Passwd, hdPath string, algo keyring.SignatureAlgo) (cryptotypes.PrivKey, error) {
+func GenPrvKeyByMnemonic(mnemonic, bip39Passwd, hdPath string, algo keyring.SignatureAlgo) (cryptotypes.PrivKey, error) {
 	// create master key and derive first key for keyring
 	derivedPriv, err := hd.Secp256k1.Derive()(mnemonic, bip39Passwd, hdPath)
 	if err != nil {
@@ -64,16 +59,17 @@ func GenPrvKey(mnemonic, bip39Passwd, hdPath string, algo keyring.SignatureAlgo)
 	return hd.Secp256k1.Generate()(derivedPriv), nil
 }
 
-func (m *keyManager) GetPrivKey() cryptotypes.PrivKey {
+func (m *KeyManager) GetPrivKey() cryptotypes.PrivKey {
 	return m.privKey
 }
 
-func (m *keyManager) GetAddr() sdk.AccAddress {
+func (m *KeyManager) GetAddr() sdk.AccAddress {
 	return m.addr
 }
 
 // Sign signs a standard msg and marshals the result to bytes
-func (m *keyManager) Sign(stdMsg legacytx.StdSignMsg, cdc *codec.LegacyAmino) ([]byte, error) {
+// TODO evaluate for removal
+func (m *KeyManager) Sign(stdMsg legacytx.StdSignMsg, cdc *codec.LegacyAmino) ([]byte, error) {
 	sig, err := m.makeSignature(stdMsg)
 	if err != nil {
 		return nil, err
@@ -90,7 +86,8 @@ func (m *keyManager) Sign(stdMsg legacytx.StdSignMsg, cdc *codec.LegacyAmino) ([
 	return bz, nil
 }
 
-func (m *keyManager) makeSignature(msg legacytx.StdSignMsg) (sig legacytx.StdSignature, err error) {
+// TODO evaluate for removal
+func (m *KeyManager) makeSignature(msg legacytx.StdSignMsg) (sig legacytx.StdSignature, err error) {
 	sigBytes, err := m.privKey.Sign(msg.Bytes())
 	if err != nil {
 		return
