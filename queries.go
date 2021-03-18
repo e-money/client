@@ -59,8 +59,30 @@ func (c *Client) GetAccountGrpc(addr string) (acc authtypes.AccountI, err error)
 	return resAccount, nil
 }
 
-// GetAccount gets the account associated with an address on e-Money
-func (c *Client) GetAccount(addr string) (account authtypes.BaseAccount, err error) {
+func (c *Client)GetAccount(addr string) (authtypes.AccountI, error) {
+	url := fmt.Sprintf("%s/auth/accounts/%s", restSrv, addr)
+
+	resp, err := rest.GetRequest(url)
+	if err != nil {
+		return nil, err
+	}
+
+	bz, err := rest.ParseResponseWithHeight(c.Amino, resp)
+	if err != nil {
+		return nil, err
+	}
+
+	var acc authtypes.AccountI
+	err = c.Amino.UnmarshalJSON(bz, &acc)
+	if err != nil {
+		return nil, err
+	}
+
+	return acc, nil
+}
+
+// GetBaseAccount gets the account associated with an address on e-Money
+func (c *Client) GetBaseAccount(addr string) (account authtypes.BaseAccount, err error) {
 	res, err := rest.GetRequest("http://localhost:1317/cosmos/auth/v1beta1/accounts/"+addr)
 	if err != nil {
 		return authtypes.BaseAccount{}, err
