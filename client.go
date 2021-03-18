@@ -4,7 +4,12 @@ import (
 	"context"
 	"fmt"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	"github.com/pkg/errors"
+	"os"
+	"strings"
+
 	"github.com/cosmos/cosmos-sdk/client"
+	clienttx "github.com/cosmos/cosmos-sdk/client/tx"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
@@ -12,22 +17,28 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/rest"
 	"github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authclient "github.com/cosmos/cosmos-sdk/x/auth/client"
 	"github.com/cosmos/cosmos-sdk/x/auth/legacy/legacytx"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	bep3 "github.com/e-money/bep3/module"
+	bep3rest "github.com/e-money/bep3/module/client/rest"
 	"github.com/e-money/client/keys"
 	"github.com/tendermint/tendermint/libs/log"
 	rpcclient "github.com/tendermint/tendermint/rpc/client/http"
 	ctypes "github.com/tendermint/tendermint/rpc/core/types"
 	tmtypes "github.com/tendermint/tendermint/types"
 	"google.golang.org/grpc"
-	"os"
 )
 
 const (
-	feeDenom = "ungm"
-	restSrv = "http://localhost:1317"
+	feeDenom    = "ungm"
+	restSrv     = "http://localhost:1317"
 	jsonContent = "application/json"
 )
+
+var eMoneyFee = sdk.NewCoins(sdk.NewCoin(feeDenom, sdk.NewInt(250_000)))
 
 type encodingConfig struct {
 	InterfaceRegistry types.InterfaceRegistry
@@ -123,15 +134,127 @@ func (c *Client) GetAmino() *codec.LegacyAmino {
 	return c.Amino
 }
 
+func (c *Client) Send(fromAddr, fromKeyName, to string, keybase keyring.Keyring,
+	amount sdk.Coins) (*sdk.TxResponse, error) {
+	msg := &banktypes.MsgSend{
+		FromAddress: fromAddr,
+		ToAddress:   to,
+		Amount:      amount,
 	}
+
+	txRes, err := c.PostTx(fromAddr, fromKeyName, keybase, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println(txRes.Info, txRes.Code, txRes.TxHash, txRes.RawLog)
+
+	return txRes, nil
+}
+
+func (c *Client) createSendTx(
+	signerKeyName string, keybase keyring.Keyring, accNum, sequence uint64,
+	fee sdk.Coins, msg sdk.Msg,
+) (*legacytx.StdTx, error) {
+	chainID, err := c.GetChainID()
+	if err != nil {
+		return nil, err
+	}
+
+	// prepare txBuilder with msg
+	txBuilder := c.LegacyTxCfg.NewTxBuilder()
+	txBuilder.SetMsgs(msg)
+	txBuilder.SetFeeAmount(fee)
+	txBuilder.SetMemo("ByClient")
+
+	// setup txFactory
+	txFactory := clienttx.Factory{}.
+		WithChainID(chainID).
+		WithKeybase(keybase).
+		WithTxConfig(c.LegacyTxCfg).
+		WithSignMode(signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON).
+		WithAccountNumber(accNum).
+		WithSequence(sequence)
+
+	// offline mode requires sequence account number filled-in,
+	if err := authclient.SignTx(txFactory, client.Context{}, signerKeyName,
+		txBuilder, true, true); err != nil {
+		return nil, err
+	}
+
+	stdTx := txBuilder.GetTx().(legacytx.StdTx)
+
+	return &stdTx, nil
+}
+
+func (c *Client) PostTx(signerAddr, signerKeyname string, keybase keyring.Keyring, msg sdk.Msg) (*sdk.TxResponse, error) {
+	actNum, seq, err := c.getAccountNumSeq(signerAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	stdTx, err := c.createSendTx(signerKeyname, keybase, actNum, seq, eMoneyFee, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	txRes, err := c.broadcast(stdTx, err)
+	if err != nil {
+		return nil, err
+	}
+
+	return txRes, nil
+}
+
+func (c *Client) broadcast(stdTx *legacytx.StdTx, err error) (*sdk.TxResponse, error) {
+	req := bep3rest.BroadcastReq{
+		Tx:   *stdTx,
+		Mode: tx.BroadcastMode_BROADCAST_MODE_BLOCK.String(),
+	}
+	bz, err := c.Amino.MarshalJSON(req)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := rest.PostRequest(
+		fmt.Sprintf("%s/bep3/txs", restSrv), jsonContent, bz,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if strings.Contains(string(res), "error") {
+		return nil, errors.New(string(res))
+	}
+
+	var txRes sdk.TxResponse
+	if err := c.Amino.UnmarshalJSON(res, &txRes); err != nil {
+		return nil, err
+	}
+
+	return &txRes, nil
+}
+
+func (c *Client) getAccountNumSeq(addr string) (accountNumber, accountSeq uint64, errRet error) {
+	accountNumber = 0
+	accountSeq = 0
+	errRet = nil
+
+	account, err := c.GetAccount(addr)
+	if err != nil {
+		return accountNumber, accountSeq, err
+	}
+
+	accountNumber = account.GetAccountNumber()
+	accountSeq = account.GetSequence()
+
+	return accountNumber, accountSeq, errRet
 }
 
 // Broadcast sends a message to the e-Money blockchain as a transaction.
 // This pays no transaction fees.
 func (c *Client) Broadcast(m sdk.Msg, syncType tx.BroadcastMode) (*tx.BroadcastTxResponse, error) {
 
-	fee := sdk.NewCoins(sdk.NewCoin(feeDenom, sdk.NewInt(250000)))
-	return c.BroadcastWithFee(m, fee, syncType)
+	return c.BroadcastWithFee(m, eMoneyFee, syncType)
 }
 
 // BroadcastWithFee sends a message to the Cosmos blockchain as a transaction, paying the specified transaction fee.
@@ -205,7 +328,7 @@ func (c *Client) BroadcastTxCommit(tx tmtypes.Tx) (*ctypes.ResultBroadcastTxComm
 	if err := ValidateTx(tx); err != nil {
 		return nil, err
 	}
-	return c.HTTP.BroadcastTxCommit(context.Background(),tx)
+	return c.HTTP.BroadcastTxCommit(context.Background(), tx)
 }
 
 // BroadcastTxAsync sends a transaction using async
@@ -221,5 +344,5 @@ func (c *Client) BroadcastTxSync(tx tmtypes.Tx) (*ctypes.ResultBroadcastTx, erro
 	if err := ValidateTx(tx); err != nil {
 		return nil, err
 	}
-	return c.HTTP.BroadcastTxSync(context.Background(),tx)
+	return c.HTTP.BroadcastTxSync(context.Background(), tx)
 }
