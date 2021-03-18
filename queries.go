@@ -19,7 +19,7 @@ import (
 // GetSwapByID gets an atomic swap on e-Money by ID
 func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap bep3.AtomicSwap, err error) {
 	params := bep3.NewQueryAtomicSwapByID(swapID)
-	bz, err := c.Cdc.MarshalJSON(params)
+	bz, err := c.Amino.MarshalJSON(params)
 	if err != nil {
 		return bep3.AtomicSwap{}, err
 	}
@@ -31,7 +31,7 @@ func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap bep3.AtomicSwap, err
 		return bep3.AtomicSwap{}, err
 	}
 
-	err = c.Cdc.UnmarshalJSON(result, &swap)
+	err = c.Amino.UnmarshalJSON(result, &swap)
 	if err != nil {
 		return bep3.AtomicSwap{}, err
 	}
@@ -67,7 +67,7 @@ func (c *Client) GetAccount(addr string) (account authtypes.BaseAccount, err err
 	}
 
 	var resAccount authtypes.BaseAccount
-	if err:=c.Cdc.UnmarshalJSON(res, resAccount); err != nil {
+	if err:=c.Amino.UnmarshalJSON(res, resAccount); err != nil {
 		return authtypes.BaseAccount{}, err
 	}
 
@@ -100,7 +100,7 @@ func (c *Client) GetDenomBalance(addr, denom string) (*sdk.Coin, error) {
 	}
 
 	var balance sdk.Coin
-	if err:=c.Cdc.UnmarshalJSON(res, &balance); err != nil {
+	if err:=c.Amino.UnmarshalJSON(res, &balance); err != nil {
 		return nil, err
 	}
 
@@ -115,7 +115,7 @@ func (c *Client) GetBalances(addr string) (*sdk.Coins,error) {
 	}
 
 	var balances sdk.Coins
-	if err:=c.Cdc.UnmarshalJSON(res, &balances); err != nil {
+	if err:=c.Amino.UnmarshalJSON(res, &balances); err != nil {
 		return nil, err
 	}
 
