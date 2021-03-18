@@ -3,9 +3,11 @@ package client
 import (
 	"context"
 	"fmt"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
+	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/rest"
 	"github.com/cosmos/cosmos-sdk/types/tx"
@@ -27,21 +29,60 @@ const (
 	jsonContent = "application/json"
 )
 
+type encodingConfig struct {
+	InterfaceRegistry types.InterfaceRegistry
+	Marshaler         codec.Marshaler // Interface and default codec selection
+	Proto             *codec.ProtoCodec
+	Amino             *codec.LegacyAmino
+}
+
+func makeEncodingConfig() *encodingConfig {
+	cdc := codec.NewLegacyAmino()
+	interfaceRegistry := types.NewInterfaceRegistry()
+	proto := codec.NewProtoCodec(interfaceRegistry)
+
+	return &encodingConfig{
+		InterfaceRegistry: interfaceRegistry,
+		Marshaler:         proto,
+		Amino:             cdc,
+		Proto:             proto,
+	}
+}
+
+func registerCdc() *encodingConfig {
+	cfg := makeEncodingConfig()
+
+	cryptocodec.RegisterCrypto(cfg.Amino)
+	authtypes.RegisterLegacyAminoCodec(cfg.Amino)
+	banktypes.RegisterLegacyAminoCodec(cfg.Amino)
+
+	// register Tx, Msg
+	sdk.RegisterLegacyAminoCodec(cfg.Amino)
+
+	// register Bep3 types
+	cfg.Amino.RegisterConcrete(&bep3.MsgCreateAtomicSwap{}, "MsgCreateAtomicSwap", nil)
+	cfg.Amino.RegisterConcrete(&bep3.MsgRefundAtomicSwap{}, "MsgRefundAtomicSwap", nil)
+	cfg.Amino.RegisterConcrete(&bep3.MsgClaimAtomicSwap{}, "MsgClaimAtomicSwap", nil)
+
+	return cfg
+}
+
 // Client facilitates interaction with the cosmos blockchain
 type Client struct {
-	Network ChainNetwork
-	HTTP    *rpcclient.HTTP
-	Keybase keys.KeyManager
-	Cdc     *codec.LegacyAmino
-	Marshaller codec.BinaryMarshaler
-	grpcConn *grpc.ClientConn
+	AccountName string
+	Network     ChainNetwork
+	HTTP        *rpcclient.HTTP
+	Keybase     *keys.KeyManager
+	Amino       *codec.LegacyAmino
+	Marshaller  codec.BinaryMarshaler
+	grpcConn    *grpc.ClientConn
 
 	LegacyTxCfg *legacytx.StdTxConfig
-	ProtoTxCfg client.TxConfig
+	ProtoTxCfg  client.TxConfig
 }
 
 // NewClient creates a new cosmos sdk client
-func NewClient(amino *codec.LegacyAmino,mnemonic string, rpcAddr string, networkType ChainNetwork) *Client {
+func NewClient(mnemonic, accountName, rpcAddr string) *Client {
 	// Set up HTTP client
 	http, err := rpcclient.New(rpcAddr, "/websocket")
 	if err != nil {
@@ -49,8 +90,7 @@ func NewClient(amino *codec.LegacyAmino,mnemonic string, rpcAddr string, network
 	}
 	http.Logger = log.NewTMLogger(log.NewSyncWriter(os.Stdout))
 
-	intRegistry := types.NewInterfaceRegistry()
-	proto := codec.NewProtoCodec(intRegistry)
+	enc := registerCdc()
 
 	// Create a connection to the gRPC server.
 	grpcConn, err := grpc.Dial(
@@ -62,20 +102,27 @@ func NewClient(amino *codec.LegacyAmino,mnemonic string, rpcAddr string, network
 	}
 
 	// Set up key manager
-	keyManager, err := keys.NewMnemonicKeyManager(mnemonic)
+	keyManager, err := keys.NewMnemonicKeyManager(mnemonic, accountName)
 	if err != nil {
 		panic(fmt.Sprintf("new key manager from mnenomic err, err=%s", err.Error()))
 	}
 
 	return &Client{
-		Network: networkType,
-		HTTP:    http,
-		Keybase: keyManager,
-		Cdc:     amino,
-		Marshaller: proto,
-		grpcConn: grpcConn,
-		LegacyTxCfg: &legacytx.StdTxConfig{Cdc: amino},
-		ProtoTxCfg: authtx.NewTxConfig(proto, authtx.DefaultSignModes),
+		AccountName: accountName,
+		HTTP:        http,
+		Keybase:     keyManager,
+		Amino:       enc.Amino,
+		Marshaller:  enc.Marshaler,
+		grpcConn:    grpcConn,
+		LegacyTxCfg: &legacytx.StdTxConfig{Cdc: enc.Amino},
+		ProtoTxCfg:  authtx.NewTxConfig(enc.Proto, authtx.DefaultSignModes),
+	}
+}
+
+func (c *Client) GetAmino() *codec.LegacyAmino {
+	return c.Amino
+}
+
 	}
 }
 
@@ -104,7 +151,7 @@ func (c *Client) BroadcastWithFee(m sdk.Msg, fee sdk.Coins, syncType tx.Broadcas
 		TxBytes: txBytes,
 	}
 
-	req, err := c.Cdc.MarshalJSON(txreq)
+	req, err := c.Amino.MarshalJSON(txreq)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +163,7 @@ func (c *Client) BroadcastWithFee(m sdk.Msg, fee sdk.Coins, syncType tx.Broadcas
 	}
 
 	var result tx.BroadcastTxResponse
-	if err = c.Cdc.UnmarshalJSON(res, &result); err != nil {
+	if err = c.Amino.UnmarshalJSON(res, &result); err != nil {
 		return nil, err
 	}
 
@@ -140,9 +187,9 @@ func (c *Client) sign(m sdk.Msg, fee sdk.Coins) (sdk.Tx, error) {
 	txBuilder.SetMemo("ByClient")
 
 	sig := signing.SignatureV2{
-		PubKey:   c.Keybase.GetPrivKey().PubKey(),
-		Data:     &signing.SingleSignatureData{
-			SignMode:  signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON,
+		PubKey: c.Keybase.GetPrivKey().PubKey(),
+		Data: &signing.SingleSignatureData{
+			SignMode: signing.SignMode_SIGN_MODE_LEGACY_AMINO_JSON,
 		},
 	}
 
