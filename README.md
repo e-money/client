@@ -23,15 +23,15 @@ import (
     
 // Set up cosmos prefixes and codec
 config := sdk.GetConfig()
-kava.SetBech32AddressPrefixes(config)
-cdc := kava.MakeCodec()
+emledger.SetBech32AddressPrefixes(config)
+cdc := emledger.MakeCodec()
 
 // Initialize new client and set codec
-client := client.NewClient(cdc, mnemonic, kava.Bip44CoinType, rpcAddr, networkTestnet)
+client := client.NewClient(cdc, mnemonic, emledger.Bip44CoinType, rpcAddr, networkTestnet)
 client.Keybase.SetCodec(cdc)
 ```
 
-Let's use our new client to query the cosmos blockchain for information about an account
+Let's use our new client to query the e-Money blockchain for information about an account
 
 ```go
 address := "emoney1wxenlc8xpeq6jxmdklznzfam6svsnms9m7vhap"
