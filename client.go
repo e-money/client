@@ -151,6 +151,24 @@ func (c *Client) Send(fromAddr, fromKeyName, to string, keybase keyring.Keyring,
 	return txRes, nil
 }
 
+func (c *Client) SendGrpc(fromAddr, fromKeyName, to string, keybase keyring.Keyring,
+	amount sdk.Coins) (*sdk.TxResponse, error) {
+	msg := &banktypes.MsgSend{
+		FromAddress: fromAddr,
+		ToAddress:   to,
+		Amount:      amount,
+	}
+
+	txRes, err := c.PostTxGrpc(fromAddr, fromKeyName, keybase, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println(txRes.Info, txRes.Code, txRes.TxHash, txRes.RawLog)
+
+	return txRes, nil
+}
+
 func (c *Client) getLegacyTx(
 	signerKeyName string, keybase keyring.Keyring, accNum, sequence uint64,
 	fee sdk.Coins, msg sdk.Msg,
@@ -191,6 +209,45 @@ func (c *Client) getLegacyTx(
 	return txBytes, nil
 }
 
+func (c *Client) getTx(
+	signerKeyName string, keybase keyring.Keyring, accNum, sequence uint64,
+	fee sdk.Coins, msg sdk.Msg,
+) ([]byte, error) {
+	chainID, err := c.GetChainID()
+	if err != nil {
+		return nil, err
+	}
+
+	// prepare txBuilder with msg
+	txBuilder := c.ProtoTxCfg.NewTxBuilder()
+	txBuilder.SetMsgs(msg)
+	txBuilder.SetFeeAmount(fee)
+	txBuilder.SetMemo("ByClient")
+
+	// setup txFactory
+	txFactory := clienttx.Factory{}.
+		WithChainID(chainID).
+		WithKeybase(keybase).
+		WithTxConfig(c.ProtoTxCfg).
+		WithSignMode(signing.SignMode_SIGN_MODE_DIRECT).
+		WithAccountNumber(accNum).
+		WithSequence(sequence)
+
+	// offline mode requires sequence account number filled-in,
+	if err := authclient.SignTx(txFactory, client.Context{}, signerKeyName,
+		txBuilder, true, true); err != nil {
+
+		return nil, err
+	}
+
+	txBytes, err := c.ProtoTxCfg.TxEncoder()(txBuilder.GetTx())
+	if err != nil {
+		return nil, err
+	}
+
+	return txBytes, nil
+}
+
 func (c *Client) PostTxRest(signerAddr, signerKeyname string, keybase keyring.Keyring, msg sdk.Msg) (*sdk.TxResponse, error) {
 	actNum, seq, err := c.getAccountNumSeq(signerAddr)
 	if err != nil {
@@ -217,14 +274,26 @@ func (c *Client) PostTxGrpc(signerAddr, signerKeyname string, keybase keyring.Ke
 	}
 
 	return c.broadcastGrpc(context.Background(), txBytes)
-	req := bep3rest.BroadcastReq{
-		Tx:   *stdTx,
-		Mode: tx.BroadcastMode_BROADCAST_MODE_BLOCK.String(),
-	}
-	bz, err := c.Amino.MarshalJSON(req)
+}
+
+// broadcastGrpc Broadcast the tx via gRPC. We create a new client for the
+// Protobuf Tx service.
+func (c *Client) broadcastGrpc(ctx context.Context, txBytes []byte) (*sdk.TxResponse, error) {
+	grpcClient := tx.NewServiceClient(c.grpcConn)
+	// We then call the BroadcastTx method on this client.
+	grpcRes, err := grpcClient.BroadcastTx(
+		ctx,
+	&tx.BroadcastTxRequest{
+			Mode:    tx.BroadcastMode_BROADCAST_MODE_SYNC,
+			TxBytes: txBytes,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
+
+	return grpcRes.TxResponse, nil
+}
 
 func (c *Client) broadcastRest(ctx context.Context, txBytes []byte) (*sdk.TxResponse, error) {
 	res, err := rest.PostRequest(
