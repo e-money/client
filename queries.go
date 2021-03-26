@@ -97,12 +97,13 @@ func (c *Client) GetBaseAccount(addr string) (account authtypes.BaseAccount, err
 }
 
 // GetDenomBalance gets the balance associated with an address on e-Money by gRPC
-func (c *Client) GetDenomBalanceGRPC(addr string) (*sdk.Coin, error) {
+func (c *Client) GetDenomBalanceGRPC(addr, denom string) (*sdk.Coin, error) {
 	q := banktypes.NewQueryClient(c.grpcConn)
 	res, err := q.Balance(
 		context.Background(),
 		&banktypes.QueryBalanceRequest{
 			Address: addr,
+			Denom:   denom,
 		})
 	if err != nil {
 		return nil, err
