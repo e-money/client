@@ -23,7 +23,6 @@ import (
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	bep3 "github.com/e-money/bep3/module"
-	bep3rest "github.com/e-money/bep3/module/client/rest"
 	"github.com/e-money/client/keys"
 	"github.com/tendermint/tendermint/libs/log"
 	rpcclient "github.com/tendermint/tendermint/rpc/client/http"
@@ -142,7 +141,7 @@ func (c *Client) Send(fromAddr, fromKeyName, to string, keybase keyring.Keyring,
 		Amount:      amount,
 	}
 
-	txRes, err := c.PostTx(fromAddr, fromKeyName, keybase, msg)
+	txRes, err := c.PostTxRest(fromAddr, fromKeyName, keybase, msg)
 	if err != nil {
 		return nil, err
 	}
@@ -152,10 +151,10 @@ func (c *Client) Send(fromAddr, fromKeyName, to string, keybase keyring.Keyring,
 	return txRes, nil
 }
 
-func (c *Client) createSendTx(
+func (c *Client) getLegacyTx(
 	signerKeyName string, keybase keyring.Keyring, accNum, sequence uint64,
 	fee sdk.Coins, msg sdk.Msg,
-) (*legacytx.StdTx, error) {
+) ([]byte, error) {
 	chainID, err := c.GetChainID()
 	if err != nil {
 		return nil, err
@@ -179,34 +178,45 @@ func (c *Client) createSendTx(
 	// offline mode requires sequence account number filled-in,
 	if err := authclient.SignTx(txFactory, client.Context{}, signerKeyName,
 		txBuilder, true, true); err != nil {
+
 		return nil, err
 	}
 
-	stdTx := txBuilder.GetTx().(legacytx.StdTx)
+	// Protobuf encoded legacy signed Trx
+	txBytes, err := c.ProtoTxCfg.TxEncoder()(txBuilder.GetTx())
+	if err != nil {
+		return nil, err
+	}
 
-	return &stdTx, nil
+	return txBytes, nil
 }
 
-func (c *Client) PostTx(signerAddr, signerKeyname string, keybase keyring.Keyring, msg sdk.Msg) (*sdk.TxResponse, error) {
+func (c *Client) PostTxRest(signerAddr, signerKeyname string, keybase keyring.Keyring, msg sdk.Msg) (*sdk.TxResponse, error) {
 	actNum, seq, err := c.getAccountNumSeq(signerAddr)
 	if err != nil {
 		return nil, err
 	}
 
-	stdTx, err := c.createSendTx(signerKeyname, keybase, actNum, seq, eMoneyFee, msg)
+	txBytes, err := c.getTx(signerKeyname, keybase, actNum, seq, eMoneyFee, msg)
 	if err != nil {
 		return nil, err
 	}
 
-	txRes, err := c.broadcast(stdTx, err)
-	if err != nil {
-		return nil, err
-	}
-
-	return txRes, nil
+	return c.broadcastRest(context.Background(), txBytes)
 }
 
-func (c *Client) broadcast(stdTx *legacytx.StdTx, err error) (*sdk.TxResponse, error) {
+func (c *Client) PostTxGrpc(signerAddr, signerKeyname string, keybase keyring.Keyring, msg sdk.Msg) (*sdk.TxResponse, error) {
+	actNum, seq, err := c.getAccountNumSeq(signerAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	txBytes, err := c.getTx(signerKeyname, keybase, actNum, seq, eMoneyFee, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.broadcastGrpc(context.Background(), txBytes)
 	req := bep3rest.BroadcastReq{
 		Tx:   *stdTx,
 		Mode: tx.BroadcastMode_BROADCAST_MODE_BLOCK.String(),
@@ -216,8 +226,9 @@ func (c *Client) broadcast(stdTx *legacytx.StdTx, err error) (*sdk.TxResponse, e
 		return nil, err
 	}
 
+func (c *Client) broadcastRest(ctx context.Context, txBytes []byte) (*sdk.TxResponse, error) {
 	res, err := rest.PostRequest(
-		fmt.Sprintf("%s/bep3/txs", restSrv), jsonContent, bz,
+		fmt.Sprintf("%s/cosmos/tx/v1beta1/txs", restSrv), jsonContent, txBytes,
 	)
 	if err != nil {
 		return nil, err
@@ -257,8 +268,10 @@ func (c *Client) Broadcast(m sdk.Msg, syncType tx.BroadcastMode) (*tx.BroadcastT
 	return c.BroadcastWithFee(m, eMoneyFee, syncType)
 }
 
-// BroadcastWithFee sends a message to the Cosmos blockchain as a transaction, paying the specified transaction fee.
+// BroadcastWithFee sends a message to the Cosmos blockchain as a transaction,
+// paying the specified transaction fee.
 func (c *Client) BroadcastWithFee(m sdk.Msg, fee sdk.Coins, syncType tx.BroadcastMode) (*tx.BroadcastTxResponse, error) {
+
 	signBz, err := c.sign(m, fee)
 	if err != nil {
 		return nil, err
