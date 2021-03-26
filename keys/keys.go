@@ -19,7 +19,7 @@ type KeyManager struct {
 	Account  keyring.Info
 	privKey  cryptotypes.PrivKey
 	addr     sdk.AccAddress
-	mnemonic string
+	Mnemonic string
 }
 
 // NewMnemonicKeyManager creates a new KeyManager from a mnenomic
@@ -44,7 +44,7 @@ func NewMnemonicKeyManager(mnemonic, accountName string) (*KeyManager, error) {
 		Account:  memInfo,
 		privKey:  prvKey,
 		addr:     memInfo.GetAddress(),
-		mnemonic: mnemonic,
+		Mnemonic: mnemonic,
 	}
 	return &k, err
 }
