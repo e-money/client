@@ -34,10 +34,11 @@ import (
 const (
 	feeDenom    = "ungm"
 	restSrv     = "http://localhost:1317"
+	grpcSrv     = "127.0.0.1:9090"
 	jsonContent = "application/json"
 )
 
-var eMoneyFee = sdk.NewCoins(sdk.NewCoin(feeDenom, sdk.NewInt(250_000)))
+var eMoneyFee = sdk.NewCoins(sdk.NewCoin(feeDenom, sdk.NewInt(250)))
 
 type encodingConfig struct {
 	InterfaceRegistry types.InterfaceRegistry
@@ -104,7 +105,7 @@ func NewClient(mnemonic, accountName, rpcAddr string) *Client {
 
 	// Create a connection to the gRPC server.
 	grpcConn, err := grpc.Dial(
-		"127.0.0.1:9090",
+		grpcSrv,
 		grpc.WithInsecure(),
 	)
 	if err != nil {
