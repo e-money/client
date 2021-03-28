@@ -36,6 +36,7 @@ const (
 	restSrv     = "http://localhost:1317"
 	grpcSrv     = "127.0.0.1:9090"
 	jsonContent = "application/json"
+	defGasLimit = 100_000
 )
 
 var eMoneyFee = sdk.NewCoins(sdk.NewCoin(feeDenom, sdk.NewInt(250)))
@@ -183,6 +184,7 @@ func (c *Client) getLegacyTx(
 	txBuilder := c.LegacyTxCfg.NewTxBuilder()
 	txBuilder.SetMsgs(msg)
 	txBuilder.SetFeeAmount(fee)
+	txBuilder.SetGasLimit(defGasLimit)
 	txBuilder.SetMemo("ByClient")
 
 	// setup txFactory
@@ -223,6 +225,7 @@ func (c *Client) getTx(
 	txBuilder := c.ProtoTxCfg.NewTxBuilder()
 	txBuilder.SetMsgs(msg)
 	txBuilder.SetFeeAmount(fee)
+	txBuilder.SetGasLimit(defGasLimit)
 	txBuilder.SetMemo("ByClient")
 
 	// setup txFactory
