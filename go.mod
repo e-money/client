@@ -18,3 +18,5 @@ replace github.com/e-money/bep3 => ../bep3
 
 // https://docs.cosmos.network/v0.41/core/grpc_rest.html#grpc-server
 replace google.golang.org/grpc => google.golang.org/grpc v1.33.2
+
+replace github.com/e-money/em-ledger => ../stargate
