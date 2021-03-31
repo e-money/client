@@ -4,39 +4,85 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/std"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/rest"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	bep3types "github.com/e-money/bep3/module/types"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	bep3 "github.com/e-money/bep3/module"
 )
 
-// GetSwapByID gets an atomic swap on e-Money by ID
-func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap bep3.AtomicSwap, err error) {
-	params := bep3.NewQueryAtomicSwapByID(swapID)
-	bz, err := c.Amino.MarshalJSON(params)
+// GetHeight gets the current block height
+func (c *Client) GetHeight() (int64, error) {
+	status, err := c.HTTP.Status(context.Background())
 	if err != nil {
-		return bep3.AtomicSwap{}, err
+		return 0, err
 	}
 
-	path := "custom/bep3/swap"
-
-	result, err := c.ABCIQuery(path, bz)
-	if err != nil {
-		return bep3.AtomicSwap{}, err
-	}
-
-	err = c.Amino.UnmarshalJSON(result, &swap)
-	if err != nil {
-		return bep3.AtomicSwap{}, err
-	}
-	return swap, nil
+	return status.SyncInfo.LatestBlockHeight, nil
 }
+
+// WaitForHeight waits till the chain reaches the requested height
+// or times out whichever occurs first.
+func (c *Client)WaitForHeight(requestedHeight int64, expirationSpan time.Duration) (int64, error) {
+	ticker := time.NewTicker(750 * time.Millisecond)
+	timeout := time.After(expirationSpan)
+
+	var blockHeight int64 = -1
+
+	for {
+		select {
+		case <-timeout:
+			ticker.Stop()
+			return blockHeight, fmt.Errorf(
+				"timeout at height %d, before reaching height:%d",
+				blockHeight,
+				requestedHeight)
+		case <-ticker.C:
+			height, err := c.GetHeight()
+			if err != nil {
+				return -1, err
+			}
+			if height >= requestedHeight {
+				return height, nil
+			}
+		}
+	}
+}
+
+// CalcSwapId calculates the swap ID for a given random number hash, sender,
+// and senderOtherChain
+func (c *Client) CalcSwapId(randomNumberHash tmbytes.HexBytes, sender string, senderOtherChain string) ([]byte, error) {
+	senderAddr, err := sdk.AccAddressFromBech32(sender)
+	if err != nil {
+
+		return nil, err
+	}
+
+	return bep3.CalculateSwapID(randomNumberHash[:], senderAddr, senderOtherChain), nil
+}
+
+// GetSwapByID gets an atomic swap on e-Money by ID
+func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap *bep3.AtomicSwap, err error) {
+	queryClient := bep3types.NewQueryClient(c.grpcConn)
+	res, err := queryClient.Swap(
+		context.Background(),
+		&bep3types.QuerySwapRequest{
+			SwapID: swapID,
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	return &res.Swap, nil
+}
+
 // GetAccount gets the account associated with an address on e-Money by gRPC
 func (c *Client) GetAccountGrpc(addr string) (acc authtypes.AccountI, err error) {
 	// TODO test approach
