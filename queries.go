@@ -11,11 +11,11 @@ import (
 	"github.com/cosmos/cosmos-sdk/std"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/rest"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	bep3 "github.com/e-money/bep3/module"
 	bep3types "github.com/e-money/bep3/module/types"
 	tmbytes "github.com/tendermint/tendermint/libs/bytes"
-	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	bep3 "github.com/e-money/bep3/module"
 )
 
 // GetHeight gets the current block height
@@ -30,7 +30,9 @@ func (c *Client) GetHeight() (int64, error) {
 
 // WaitForHeight waits till the chain reaches the requested height
 // or times out whichever occurs first.
-func (c *Client)WaitForHeight(requestedHeight int64, expirationSpan time.Duration) (int64, error) {
+func (c *Client) WaitForHeight(
+	requestedHeight int64, expirationSpan time.Duration,
+) (int64, error) {
 	ticker := time.NewTicker(750 * time.Millisecond)
 	timeout := time.After(expirationSpan)
 
@@ -43,7 +45,8 @@ func (c *Client)WaitForHeight(requestedHeight int64, expirationSpan time.Duratio
 			return blockHeight, fmt.Errorf(
 				"timeout at height %d, before reaching height:%d",
 				blockHeight,
-				requestedHeight)
+				requestedHeight,
+			)
 		case <-ticker.C:
 			height, err := c.GetHeight()
 			if err != nil {
@@ -58,24 +61,29 @@ func (c *Client)WaitForHeight(requestedHeight int64, expirationSpan time.Duratio
 
 // CalcSwapId calculates the swap ID for a given random number hash, sender,
 // and senderOtherChain
-func (c *Client) CalcSwapId(randomNumberHash tmbytes.HexBytes, sender string, senderOtherChain string) ([]byte, error) {
+func (c *Client) CalcSwapId(
+	randomNumberHash tmbytes.HexBytes, sender string, senderOtherChain string,
+) ([]byte, error) {
 	senderAddr, err := sdk.AccAddressFromBech32(sender)
 	if err != nil {
 
 		return nil, err
 	}
 
-	return bep3.CalculateSwapID(randomNumberHash[:], senderAddr, senderOtherChain), nil
+	return bep3.CalculateSwapID(
+		randomNumberHash[:], senderAddr, senderOtherChain,
+	), nil
 }
 
 // GetSwapByID gets an atomic swap on e-Money by ID
 func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap *bep3.AtomicSwap, err error) {
-	queryClient := bep3types.NewQueryClient(c.grpcConn)
-	res, err := queryClient.Swap(
+	q := bep3types.NewQueryClient(c.grpcConn)
+	res, err := q.Swap(
 		context.Background(),
 		&bep3types.QuerySwapRequest{
 			SwapID: swapID,
-		})
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -87,8 +95,10 @@ func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap *bep3.AtomicSwap, er
 func (c *Client) GetAccountGrpc(addr string) (acc authtypes.AccountI, err error) {
 	// TODO test approach
 	q := authtypes.NewQueryClient(c.grpcConn)
-	res, err := q.Account(context.Background(),
-		&authtypes.QueryAccountRequest{Address: addr})
+	res, err := q.Account(
+		context.Background(),
+		&authtypes.QueryAccountRequest{Address: addr},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +115,7 @@ func (c *Client) GetAccountGrpc(addr string) (acc authtypes.AccountI, err error)
 	return resAccount, nil
 }
 
-func (c *Client)GetAccount(addr string) (authtypes.AccountI, error) {
+func (c *Client) GetAccount(addr string) (authtypes.AccountI, error) {
 	url := fmt.Sprintf("%s/auth/accounts/%s", restSrv, addr)
 
 	resp, err := rest.GetRequest(url)
@@ -129,13 +139,13 @@ func (c *Client)GetAccount(addr string) (authtypes.AccountI, error) {
 
 // GetBaseAccount gets the account associated with an address on e-Money
 func (c *Client) GetBaseAccount(addr string) (account authtypes.BaseAccount, err error) {
-	res, err := rest.GetRequest("http://localhost:1317/cosmos/auth/v1beta1/accounts/"+addr)
+	res, err := rest.GetRequest("http://localhost:1317/cosmos/auth/v1beta1/accounts/" + addr)
 	if err != nil {
 		return authtypes.BaseAccount{}, err
 	}
 
 	var resAccount authtypes.BaseAccount
-	if err:=c.Amino.UnmarshalJSON(res, resAccount); err != nil {
+	if err := c.Amino.UnmarshalJSON(res, resAccount); err != nil {
 		return authtypes.BaseAccount{}, err
 	}
 
@@ -150,7 +160,8 @@ func (c *Client) GetDenomBalanceGRPC(addr, denom string) (*sdk.Coin, error) {
 		&banktypes.QueryBalanceRequest{
 			Address: addr,
 			Denom:   denom,
-		})
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -161,15 +172,18 @@ func (c *Client) GetDenomBalanceGRPC(addr, denom string) (*sdk.Coin, error) {
 // GetAccount gets the account associated with an address on e-Money
 func (c *Client) GetDenomBalance(addr, denom string) (*sdk.Coin, error) {
 	res, err := rest.
-		GetRequest(fmt.Sprintf(
-			"http://localhost:1317/cosmos/auth/v1beta1/accounts/%s/%s",
-			addr, denom))
+		GetRequest(
+			fmt.Sprintf(
+				"http://localhost:1317/cosmos/auth/v1beta1/accounts/%s/%s",
+				addr, denom,
+			),
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	var balance sdk.Coin
-	if err:=c.Amino.UnmarshalJSON(res, &balance); err != nil {
+	if err := c.Amino.UnmarshalJSON(res, &balance); err != nil {
 		return nil, err
 	}
 
@@ -177,14 +191,14 @@ func (c *Client) GetDenomBalance(addr, denom string) (*sdk.Coin, error) {
 }
 
 // GetAccount gets the account associated with an address on e-Money
-func (c *Client) GetBalances(addr string) (*sdk.Coins,error) {
-	res, err := rest.GetRequest("http://localhost:1317/cosmos/bank/v1beta1/balances/"+addr)
+func (c *Client) GetBalances(addr string) (*sdk.Coins, error) {
+	res, err := rest.GetRequest("http://localhost:1317/cosmos/bank/v1beta1/balances/" + addr)
 	if err != nil {
 		return nil, err
 	}
 
 	var balances sdk.Coins
-	if err:=c.Amino.UnmarshalJSON(res, &balances); err != nil {
+	if err := c.Amino.UnmarshalJSON(res, &balances); err != nil {
 		return nil, err
 	}
 
