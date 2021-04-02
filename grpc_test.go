@@ -45,6 +45,8 @@ var (
 
 	// min amnt == 50001 (fee + min amount (1))
 	swapAmnt = sdk.NewInt64Coin(denom, 51000)
+	// TODO Find this
+	swapTrxFee = sdk.NewInt64Coin(denom, 250)
 	outCoins = sdk.NewCoins(swapAmnt)
 
 	emoneyUserMnemonics = []string{
@@ -120,19 +122,6 @@ func TestSwapClaim(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	/*
-	 * Balance assertions
-	 */
-
-	trxFee := sdk.NewCoin(denom, sdk.NewInt(250))
-	require.True(
-		t, balanceSignerBefSwap.Equal(
-			balanceSignerAfterSwap.Add(swapAmnt).Add(trxFee),
-		),
-	)
-
-	require.True(t, balanceRecBefSwap.Equal(balanceRecAfterSwap))
-
 	claimMsg := bep3.NewMsgClaimAtomicSwap(
 		c.Keybase.GetAddr(), swapID, randomNumber,
 	)
@@ -145,7 +134,7 @@ func TestSwapClaim(t *testing.T) {
 		claimMsg,
 	)
 	require.NoError(t, err)
-
+	require.True(t, resp.Code==0)
 	require.True(t, len(resp.TxHash) != 0, "swap trx hash should not be empty")
 
 	incChainHeight(t, c, height)
@@ -154,8 +143,6 @@ func TestSwapClaim(t *testing.T) {
 		eMoneyUserAddrs[signerIdx], denom,
 	)
 	require.NoError(t, err)
-
-	require.Equal(t, resp.Code, 0)
 
 	t.Log(
 		"signer's balance after claim", balanceSignerAfterClaim, "diff:",
@@ -172,14 +159,18 @@ func TestSwapClaim(t *testing.T) {
 	)
 
 	/*
-	 * Balance assertions
+	 * Claim Trx Balance assertions
 	 */
 
-	depFee := sdk.NewCoin(denom, sdk.NewInt(bep3types.DeputyFee))
+	doubleTrxFees := sdk.NewCoin(denom, swapTrxFee.Amount.MulRaw(2))
 
 	// swap amount deducted and keep fee
 	require.True(
-		t, balanceSignerBefSwap.Equal(balanceSignerAfterSwap.Add(depFee)),
+		t, balanceSignerAfterClaim.Equal(
+			balanceSignerBefSwap.
+				Sub(swapAmnt).
+				Sub(doubleTrxFees),
+		),
 	)
 
 	// no diff for deputy
@@ -231,10 +222,10 @@ func createOutgoingSwapTx(t *testing.T) (
 	require.NoError(t, err)
 	t.Log("receiver's balance before swap", balanceRecBefSwap.String())
 
-	tm, rndNum, hash, err := genSwapKeys()
+	tm, randomNumber, hash, err := genSwapKeys()
 	require.NoError(t, err)
 	t.Log("timestamp:", time.Unix(tm, 0))
-	t.Log("random number:", hex.EncodeToString(rndNum))
+	t.Log("random number:", hex.EncodeToString(randomNumber))
 	t.Log("hash:", hex.EncodeToString(hash))
 
 	swapID, err = c.CalcSwapId(
@@ -245,7 +236,7 @@ func createOutgoingSwapTx(t *testing.T) (
 	t.Log("swapID:", hex.EncodeToString(swapID))
 
 	require.True(
-		t, len(rndNum) > 0, "round number should not be empty",
+		t, len(randomNumber) > 0, "round number should not be empty",
 	)
 	require.Len(t, hash, 32, "hash length should be 32")
 
@@ -266,6 +257,7 @@ func createOutgoingSwapTx(t *testing.T) (
 		c.Keybase.Keyring, swapMsg,
 	)
 	require.NoError(t, err)
+	require.True(t, resp.Code==0)
 
 	require.True(
 		t, len(resp.TxHash) != 0, "swapMsg trx hash should not be empty",
@@ -298,7 +290,25 @@ func createOutgoingSwapTx(t *testing.T) (
 		"diff:", balanceRecBefSwap.Sub(*balanceRecAfterSwap),
 	)
 
-	return
+	/*
+	 * Swap Trx Balance assertions
+	 */
+
+	require.True(
+		t, balanceSignerBefSwap.Equal(
+			balanceSignerAfterSwap.Add(swapAmnt).Add(swapTrxFee),
+		),
+	)
+
+	require.True(t, balanceRecBefSwap.Equal(balanceRecAfterSwap))
+
+	return balanceSignerBefSwap,
+		balanceRecBefSwap,
+		height,
+		c,
+		randomNumber,
+		swapID,
+		swap
 }
 
 func TestRefund(t *testing.T) {

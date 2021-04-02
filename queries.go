@@ -76,7 +76,7 @@ func (c *Client) CalcSwapId(
 }
 
 // GetSwapByID gets an atomic swap on e-Money by ID
-func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap *bep3.AtomicSwap, err error) {
+func (c *Client) GetSwapByID(swapID tmbytes.HexBytes) (swap *bep3types.AtomicSwap, err error) {
 	q := bep3types.NewQueryClient(c.grpcConn)
 	res, err := q.Swap(
 		context.Background(),
