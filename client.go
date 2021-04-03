@@ -288,7 +288,7 @@ func (c *Client) broadcastGrpc(ctx context.Context, txBytes []byte) (*sdk.TxResp
 	grpcRes, err := grpcClient.BroadcastTx(
 		ctx,
 	&tx.BroadcastTxRequest{
-			Mode:    tx.BroadcastMode_BROADCAST_MODE_SYNC,
+			Mode:    tx.BroadcastMode_BROADCAST_MODE_BLOCK,
 			TxBytes: txBytes,
 		},
 	)
