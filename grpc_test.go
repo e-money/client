@@ -28,7 +28,6 @@ const (
 	defNetId       = "localnet_reuse"
 	signerIdx      = 0
 	recipientIndex = 1
-	timespanSec    = 600 // 10 min (10 * 60 sec)
 )
 
 type testsSuite struct {
@@ -47,7 +46,7 @@ var (
 	swapAmnt = sdk.NewInt64Coin(denom, 51000)
 	// TODO Find this
 	swapTrxFee = sdk.NewInt64Coin(denom, 250)
-	outCoins = sdk.NewCoins(swapAmnt)
+	outCoins   = sdk.NewCoins(swapAmnt)
 
 	emoneyUserMnemonics = []string{
 		"document weekend believe whip diesel earth hope elder quiz pact assist quarter public deal height pulp roof organ animal health month holiday front pencil",
@@ -104,13 +103,15 @@ func genSwapKeys() (timestamp int64, rndNum []byte, rndHash []byte, err error) {
 }
 
 func TestSwapClaim(t *testing.T) {
+	var tenMinutes int64 = 600 // 10 min (10 * 60 sec)
+
 	balanceSignerBefSwap,
 	balanceRecBefSwap,
 	height,
 	c,
 	randomNumber,
 	swapID,
-	swap := createOutgoingSwapTx(t)
+	swap := createOutgoingSwapTx(t, tenMinutes)
 
 	balanceSignerAfterSwap, err := c.GetDenomBalanceGRPC(
 		eMoneyUserAddrs[signerIdx], denom,
@@ -122,6 +123,85 @@ func TestSwapClaim(t *testing.T) {
 	)
 	require.NoError(t, err)
 
+	claimTrx(
+		t, c, swapID, randomNumber, err, swap, height, balanceSignerAfterSwap,
+		balanceRecAfterSwap, balanceSignerBefSwap, balanceRecBefSwap,
+	)
+}
+
+func TestExpirationRefund(t *testing.T) {
+	var (
+		oneMinute int64 = 60 // sec
+		err       error
+	)
+
+	balanceSignerBefSwap,
+	balanceRecBefSwap,
+	height,
+	c,
+	randomNumber,
+	swapID,
+	swap := createOutgoingSwapTx(t, oneMinute)
+
+	ticker := time.NewTicker(2 * time.Second)
+	timeout := time.After(time.Duration(oneMinute) * time.Second)
+
+	var secs int64 = 0
+	for {
+		select {
+		case <-timeout:
+			ticker.Stop()
+			t.Log()
+			goto checkExpiration
+		case <-ticker.C:
+			secs += 2
+			fmt.Printf(" ...%d secs left", oneMinute-secs)
+		}
+	}
+
+checkExpiration:
+	incChainHeight(t, c, height)
+	swap, err = c.GetSwapByID(swapID)
+	require.NoError(t, err)
+	require.NotNil(t, swap)
+	require.Equal(t, swap.Status, bep3.Expired)
+
+	balanceSignerAfterSwap, err := c.GetDenomBalanceGRPC(
+		eMoneyUserAddrs[signerIdx], denom,
+	)
+	require.NoError(t, err)
+
+	balanceRecAfterSwap, err := c.GetDenomBalanceGRPC(
+		eMoneyUserAddrs[recipientIndex], denom,
+	)
+	require.NoError(t, err)
+
+	/*
+	 * Swap Trx Balance assertions after expiration
+	 * same as before expiration
+	 */
+
+	require.True(
+		t, balanceSignerBefSwap.Equal(
+			balanceSignerAfterSwap.Add(swapAmnt).Add(swapTrxFee),
+		),
+	)
+
+	require.True(t, balanceRecBefSwap.Equal(balanceRecAfterSwap))
+
+	refundTrx(
+		t, c, swapID, randomNumber, err, swap, height, balanceSignerAfterSwap,
+		balanceRecAfterSwap, balanceSignerBefSwap, balanceRecBefSwap,
+	)
+}
+
+func claimTrx(
+	t *testing.T, c *emc.Client, swapID bytes.HexBytes,
+	randomNumber bytes.HexBytes, err error, swap *bep3types.AtomicSwap,
+	height int64, balanceSignerAfterSwap *sdk.Coin,
+	balanceRecAfterSwap *sdk.Coin, balanceSignerBefSwap *sdk.Coin,
+	balanceRecBefSwap *sdk.Coin,
+) {
 	claimMsg := bep3.NewMsgClaimAtomicSwap(
 		c.Keybase.GetAddr(), swapID, randomNumber,
 	)
@@ -134,8 +214,8 @@ func TestSwapClaim(t *testing.T) {
 		claimMsg,
 	)
 	require.NoError(t, err)
-	require.True(t, resp.Code==0)
-	require.True(t, len(resp.TxHash) != 0, "swap trx hash should not be empty")
+	require.True(t, resp.Code == 0)
+	require.True(t, len(resp.TxHash) != 0, "claim trx hash should not be empty")
 
 	incChainHeight(t, c, height)
 
@@ -144,18 +224,18 @@ func TestSwapClaim(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	t.Log(
-		"signer's balance after claim", balanceSignerAfterClaim, "diff:",
-		balanceSignerAfterSwap.Sub(*balanceSignerAfterClaim),
-	)
-
 	balanceRecAfterClaim, err := c.GetDenomBalanceGRPC(
 		eMoneyUserAddrs[recipientIndex], denom,
 	)
 	require.NoError(t, err)
+	t.Log("receiver's balance after claim:", balanceRecAfterClaim)
+
 	t.Log(
-		"receiver's balance after claim", balanceRecAfterClaim, "diff:",
-		balanceRecAfterClaim.Sub(*balanceRecAfterSwap),
+		"signer's balance after claim", balanceSignerAfterClaim, "diff:",
+		balanceSignerAfterSwap.Sub(*balanceSignerAfterClaim),
+	)
+	t.Logf("diff (before swap - claimed): %s",
+		balanceSignerBefSwap.Sub(*balanceSignerAfterClaim),
 	)
 
 	/*
@@ -177,9 +257,73 @@ func TestSwapClaim(t *testing.T) {
 	require.True(t, balanceRecBefSwap.Equal(balanceRecAfterSwap))
 }
 
-func createOutgoingSwapTx(t *testing.T) (
-	balanceSignerBefSwap *sdk.Coin,
+func refundTrx(
+	t *testing.T, c *emc.Client, swapID bytes.HexBytes,
+	randomNumber bytes.HexBytes, err error, swap *bep3types.AtomicSwap,
+	height int64, balanceSignerAfterSwap *sdk.Coin,
+	balanceRecAfterSwap *sdk.Coin, balanceSignerBefSwap *sdk.Coin,
 	balanceRecBefSwap *sdk.Coin,
+) {
+	refundMsg := bep3.NewMsgRefundAtomicSwap(
+		c.Keybase.GetAddr(),
+		swapID,
+	)
+
+	// ------- Refund Trx
+	resp, err := c.PostTxGrpc(
+		swap.Sender,
+		signerStrIdx,
+		c.Keybase.Keyring,
+		refundMsg,
+	)
+	require.NoError(t, err)
+	require.True(t, resp.Code == 0)
+	require.True(
+		t, len(resp.TxHash) != 0, "refund trx hash should not be empty",
+	)
+
+	incChainHeight(t, c, height)
+
+	balanceSignerAfterRefund, err := c.GetDenomBalanceGRPC(
+		eMoneyUserAddrs[signerIdx], denom,
+	)
+	require.NoError(t, err)
+
+	balanceRecAfterRefund, err := c.GetDenomBalanceGRPC(
+		eMoneyUserAddrs[recipientIndex], denom,
+	)
+	require.NoError(t, err)
+	t.Log("receiver's balance after refund", balanceRecAfterRefund)
+	t.Log("signer's balance after refund", balanceSignerAfterRefund)
+	t.Logf("diff (refunded - swap): %s",
+		balanceSignerAfterRefund.Sub(*balanceSignerAfterSwap),
+	)
+	t.Logf("diff (before swap - refunded): %s",
+		balanceSignerBefSwap.Sub(*balanceSignerAfterRefund),
+	)
+
+	/*
+	 * Refund Trx Balance assertions
+	 */
+
+	doubleTrxFees := sdk.NewCoin(denom, swapTrxFee.Amount.MulRaw(2))
+
+	// swap amount deducted and keep fee
+	require.True(
+		t, balanceSignerAfterRefund.Equal(
+			balanceSignerBefSwap.
+				Sub(doubleTrxFees),
+		),
+	)
+
+	// no diff for deputy
+	require.True(t, balanceRecBefSwap.Equal(balanceRecAfterSwap))
+}
+
+func createOutgoingSwapTx(
+	t *testing.T, timespanSec int64,
+) (
+	balanceSignerBefSwap, balanceRecBefSwap *sdk.Coin,
 	height int64,
 	c *emc.Client,
 	randomNumber,
@@ -196,7 +340,7 @@ func createOutgoingSwapTx(t *testing.T) (
 	height, err = c.GetHeight()
 	require.NoError(t, err)
 
-	fmt.Println("Creating swapMsg at height:", height)
+	t.Log("Creating swapMsg at height:", height)
 
 	balanceSignerBefSwap, err = c.GetDenomBalanceGRPC(
 		eMoneyUserAddrs[signerIdx], denom,
@@ -257,7 +401,7 @@ func createOutgoingSwapTx(t *testing.T) (
 		c.Keybase.Keyring, swapMsg,
 	)
 	require.NoError(t, err)
-	require.True(t, resp.Code==0)
+	require.True(t, resp.Code == 0)
 
 	require.True(
 		t, len(resp.TxHash) != 0, "swapMsg trx hash should not be empty",
@@ -309,10 +453,6 @@ func createOutgoingSwapTx(t *testing.T) (
 		randomNumber,
 		swapID,
 		swap
-}
-
-func TestRefund(t *testing.T) {
-	createOutgoingSwapTx(t)
 }
 
 func incChainHeight(t *testing.T, c *emc.Client, height int64) int64 {
