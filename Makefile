@@ -15,6 +15,6 @@ imp:
 	gci -w **/*.go
 
 test:
-	go test $(PACKAGES)
+	go test -v $(PACKAGES)
 
 .PHONY: build lint fmt imp test
