@@ -39,7 +39,10 @@ const (
 	defGasLimit = 100_000
 )
 
-var eMoneyFee = sdk.NewCoins(sdk.NewCoin(feeDenom, sdk.NewInt(250)))
+var (
+	EmoneyTrxCoinFee = sdk.NewCoin(feeDenom, sdk.NewInt(250))
+	eMoneyFee        = sdk.NewCoins(EmoneyTrxCoinFee)
+)
 
 type encodingConfig struct {
 	InterfaceRegistry types.InterfaceRegistry

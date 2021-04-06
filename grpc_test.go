@@ -44,8 +44,6 @@ var (
 
 	// min amnt == 50001 (fee + min amount (1))
 	swapAmnt = sdk.NewInt64Coin(denom, 51000)
-	// TODO Find this
-	swapTrxFee = sdk.NewInt64Coin(denom, 250)
 	outCoins   = sdk.NewCoins(swapAmnt)
 
 	emoneyUserMnemonics = []string{
@@ -183,7 +181,7 @@ checkExpiration:
 
 	require.True(
 		t, balanceSignerBefSwap.Equal(
-			balanceSignerAfterSwap.Add(swapAmnt).Add(swapTrxFee),
+			balanceSignerAfterSwap.Add(swapAmnt).Add(emc.EmoneyTrxCoinFee),
 		),
 	)
 
@@ -242,6 +240,7 @@ func claimTrx(
 	 * Claim Trx Balance assertions
 	 */
 
+	swapTrxFee := sdk.NewCoin(emc.EmoneyTrxCoinFee.GetDenom(), emc.EmoneyTrxCoinFee.Amount)
 	doubleTrxFees := sdk.NewCoin(denom, swapTrxFee.Amount.MulRaw(2))
 
 	// swap amount deducted and keep fee
@@ -306,6 +305,7 @@ func refundTrx(
 	 * Refund Trx Balance assertions
 	 */
 
+	swapTrxFee := sdk.NewCoin(emc.EmoneyTrxCoinFee.GetDenom(), emc.EmoneyTrxCoinFee.Amount)
 	doubleTrxFees := sdk.NewCoin(denom, swapTrxFee.Amount.MulRaw(2))
 
 	// swap amount deducted and keep fee
@@ -438,6 +438,7 @@ func createOutgoingSwapTx(
 	 * Swap Trx Balance assertions
 	 */
 
+	swapTrxFee := sdk.NewCoin(emc.EmoneyTrxCoinFee.GetDenom(), emc.EmoneyTrxCoinFee.Amount)
 	require.True(
 		t, balanceSignerBefSwap.Equal(
 			balanceSignerAfterSwap.Add(swapAmnt).Add(swapTrxFee),
