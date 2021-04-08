@@ -4,7 +4,7 @@ go 1.15
 
 require (
 	github.com/cosmos/cosmos-sdk v0.42.3
-	github.com/e-money/bep3 v0.3.0
+	github.com/e-money/bep3 v0.3.2
 	github.com/e-money/em-ledger v0.9.6-0.20210406193346-d7f27e906caf
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.7.0

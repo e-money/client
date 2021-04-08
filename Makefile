@@ -15,6 +15,12 @@ imp:
 	gci -w **/*.go
 
 test:
-	go test -v $(PACKAGES)
+	go test github.com/e-money/client/keys
+
+# integration test
+grpc-test:
+	@echo 'ensure local em-chain gRPC listener is up'
+	@echo ''
+	@go test -v github.com/e-money/client
 
 .PHONY: build lint fmt imp test

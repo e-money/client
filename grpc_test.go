@@ -101,7 +101,7 @@ func genSwapKeys() (timestamp int64, rndNum []byte, rndHash []byte, err error) {
 }
 
 func TestSwapClaim(t *testing.T) {
-	var tenMinutes int64 = 600 // 10 min (10 * 60 sec)
+	var tenMinutes int64 = 10
 
 	balanceSignerBefSwap,
 	balanceRecBefSwap,
@@ -129,7 +129,7 @@ func TestSwapClaim(t *testing.T) {
 
 func TestExpirationRefund(t *testing.T) {
 	var (
-		oneMinute int64 = 60 // sec
+		oneMinute int64 = 1 // minute
 		err       error
 	)
 
@@ -142,7 +142,7 @@ func TestExpirationRefund(t *testing.T) {
 	swap := createOutgoingSwapTx(t, oneMinute)
 
 	ticker := time.NewTicker(2 * time.Second)
-	timeout := time.After(time.Duration(oneMinute) * time.Second)
+	timeout := time.After(time.Duration(oneMinute) * time.Minute)
 
 	var secs int64 = 0
 	for {
@@ -153,7 +153,7 @@ func TestExpirationRefund(t *testing.T) {
 			goto checkExpiration
 		case <-ticker.C:
 			secs += 2
-			fmt.Printf(" ...%d secs left", oneMinute-secs)
+			fmt.Printf(" ...%d secs left", (oneMinute*60)-secs)
 		}
 	}
 
@@ -321,7 +321,7 @@ func refundTrx(
 }
 
 func createOutgoingSwapTx(
-	t *testing.T, timespanSec int64,
+	t *testing.T, timespanMin int64,
 ) (
 	balanceSignerBefSwap, balanceRecBefSwap *sdk.Coin,
 	height int64,
@@ -392,7 +392,7 @@ func createOutgoingSwapTx(
 		hash,
 		tm,
 		outCoins, // NGM Amount
-		timespanSec,
+		timespanMin,
 	)
 
 	// ------- Create Swap Trx
