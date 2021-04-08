@@ -3,11 +3,12 @@ package client
 import (
 	"context"
 	"fmt"
-	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/pkg/errors"
 	"os"
 	"strings"
 
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
+	bep3types "github.com/e-money/bep3/module/types"
 	"github.com/cosmos/cosmos-sdk/client"
 	clienttx "github.com/cosmos/cosmos-sdk/client/tx"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -54,6 +55,7 @@ type encodingConfig struct {
 func makeEncodingConfig() *encodingConfig {
 	cdc := codec.NewLegacyAmino()
 	interfaceRegistry := types.NewInterfaceRegistry()
+	bep3types.RegisterInterfaces(interfaceRegistry)
 	proto := codec.NewProtoCodec(interfaceRegistry)
 
 	return &encodingConfig{
@@ -68,6 +70,7 @@ func registerCdc() *encodingConfig {
 	cfg := makeEncodingConfig()
 
 	cryptocodec.RegisterCrypto(cfg.Amino)
+	cryptocodec.RegisterInterfaces(cfg.InterfaceRegistry)
 	authtypes.RegisterLegacyAminoCodec(cfg.Amino)
 	banktypes.RegisterLegacyAminoCodec(cfg.Amino)
 
@@ -91,6 +94,8 @@ type Client struct {
 	Amino       *codec.LegacyAmino
 	Marshaller  codec.BinaryMarshaler
 	grpcConn    *grpc.ClientConn
+	registry    types.InterfaceRegistry
+	ProtoCodec  *codec.ProtoCodec
 
 	LegacyTxCfg *legacytx.StdTxConfig
 	ProtoTxCfg  client.TxConfig
@@ -129,9 +134,18 @@ func NewClient(mnemonic, accountName, rpcAddr string) *Client {
 		Amino:       enc.Amino,
 		Marshaller:  enc.Marshaler,
 		grpcConn:    grpcConn,
+		registry:    enc.InterfaceRegistry,
+		ProtoCodec:  enc.Proto,
 		LegacyTxCfg: &legacytx.StdTxConfig{Cdc: enc.Amino},
 		ProtoTxCfg:  authtx.NewTxConfig(enc.Proto, authtx.DefaultSignModes),
 	}
+}
+
+func (c *Client) Unpack(any *types.Any) (sdk.Msg, error) {
+	var msg sdk.Msg
+	err := c.registry.UnpackAny(any, &msg)
+
+	return msg, err
 }
 
 func (c *Client) GetAmino() *codec.LegacyAmino {
