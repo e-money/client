@@ -169,40 +169,21 @@ func (c *Client) GetDenomBalanceGRPC(addr, denom string) (*sdk.Coin, error) {
 	return res.Balance, nil
 }
 
-// GetAccount gets the account associated with an address on e-Money
-func (c *Client) GetDenomBalance(addr, denom string) (*sdk.Coin, error) {
-	res, err := rest.
-		GetRequest(
-			fmt.Sprintf(
-				"http://localhost:1317/cosmos/auth/v1beta1/accounts/%s/%s",
-				addr, denom,
-			),
+// GetBalancesGRPC gets all the coins balances associated with an address on
+// e-Money by gRPC
+func (c *Client) GetBalancesGRPC(addr string) (sdk.Coins, error) {
+	q := banktypes.NewQueryClient(c.grpcConn)
+	res, err := q.AllBalances(
+		context.Background(),
+		&banktypes.QueryAllBalancesRequest{
+			Address:    addr,
+		},
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	var balance sdk.Coin
-	if err := c.Amino.UnmarshalJSON(res, &balance); err != nil {
-		return nil, err
-	}
-
-	return &balance, err
-}
-
-// GetAccount gets the account associated with an address on e-Money
-func (c *Client) GetBalances(addr string) (*sdk.Coins, error) {
-	res, err := rest.GetRequest("http://localhost:1317/cosmos/bank/v1beta1/balances/" + addr)
-	if err != nil {
-		return nil, err
-	}
-
-	var balances sdk.Coins
-	if err := c.Amino.UnmarshalJSON(res, &balances); err != nil {
-		return nil, err
-	}
-
-	return &balances, err
+	return res.GetBalances(), nil
 }
 
 func (c *Client) GetChainID() (string, error) {
