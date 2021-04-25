@@ -37,7 +37,7 @@ const (
 	restSrv     = "http://localhost:1317"
 	grpcSrv     = "127.0.0.1:9090"
 	jsonContent = "application/json"
-	defGasLimit = 100_000
+	defGasLimit = 200_000
 )
 
 var (
@@ -188,7 +188,7 @@ func (c *Client) SendGrpc(fromAddr, fromKeyName, to string, keybase keyring.Keyr
 	return txRes, nil
 }
 
-func (c *Client) getLegacyTx(
+func (c *Client) newLegacySignedTx(
 	signerKeyName string, keybase keyring.Keyring, accNum, sequence uint64,
 	fee sdk.Coins, msg sdk.Msg,
 ) ([]byte, error) {
@@ -229,7 +229,7 @@ func (c *Client) getLegacyTx(
 	return txBytes, nil
 }
 
-func (c *Client) getTx(
+func (c *Client) newProtoSignedTx(
 	signerKeyName string, keybase keyring.Keyring, accNum, sequence uint64,
 	fee sdk.Coins, msg sdk.Msg,
 ) ([]byte, error) {
@@ -275,7 +275,7 @@ func (c *Client) PostTxRest(signerAddr, signerKeyname string, keybase keyring.Ke
 		return nil, err
 	}
 
-	txBytes, err := c.getTx(signerKeyname, keybase, actNum, seq, eMoneyFee, msg)
+	txBytes, err := c.newProtoSignedTx(signerKeyname, keybase, actNum, seq, eMoneyFee, msg)
 	if err != nil {
 		return nil, err
 	}
@@ -283,13 +283,18 @@ func (c *Client) PostTxRest(signerAddr, signerKeyname string, keybase keyring.Ke
 	return c.broadcastRest(context.Background(), txBytes)
 }
 
-func (c *Client) PostTxGrpc(signerAddr, signerKeyname string, keybase keyring.Keyring, msg sdk.Msg) (*sdk.TxResponse, error) {
+func (c *Client) PostTxGrpc(
+	signerAddr,
+	signerKeyname string,
+	keybase keyring.Keyring,
+	msg sdk.Msg) (*sdk.TxResponse, error) {
+
 	actNum, seq, err := c.getAccountNumSeq(signerAddr)
 	if err != nil {
 		return nil, err
 	}
 
-	txBytes, err := c.getTx(signerKeyname, keybase, actNum, seq, eMoneyFee, msg)
+	txBytes, err := c.newProtoSignedTx(signerKeyname, keybase, actNum, seq, eMoneyFee, msg)
 	if err != nil {
 		return nil, err
 	}
